@@ -662,12 +662,66 @@ function App() {
   const parseSales = () => {
     const res = {};
     const lines = pastedText.split("\n");
+    
+    // Regular expressions to filter out non-sales numbers
+    const timeReg = /\b\d{1,2}:\d{2}(:\d{2})?(\s?[ap]m)?\b/gi;
+    const dateReg1 = /\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b/g;
+    const dateReg2 = /\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/g;
+    const dateReg3 = /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(\s+\d{2,4})?\b/gi;
+    const dateReg4 = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{2,4}\b/gi;
+    
+    // Currency matching regexes (with and without prefix/suffix)
+    const currencyPrefix = /([$£€¥]|rs\.?\s?|\busd\b|\beur\b|\bgbp\b|\binr\b)\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)/i;
+    const currencySuffix = /([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)\s*([$£€¥]|rs\.?\s?|\busd\b|\beur\b|\bgbp\b|\binr\b)/i;
+    const plainNumber = /([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)/;
+
     lines.forEach((l) => {
-      data.chatters.forEach((ch) => {
-        const reg = new RegExp(ch.name, "i");
-        if (reg.test(l)) {
-          const m = l.match(/\$?\s?([0-9]+(\.[0-9]+)?)/);
-          if (m) { res[ch.id] = (res[ch.id] || 0) + parseFloat(m[1]); }
+      // Clean up common dates and times from the line
+      let cleaned = l.replace(timeReg, '')
+                     .replace(dateReg1, '')
+                     .replace(dateReg2, '')
+                     .replace(dateReg3, '')
+                     .replace(dateReg4, '');
+
+      salesChatters.forEach((ch) => {
+        const escapedName = ch.name.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const nameReg = new RegExp(escapedName, 'i');
+        const match = cleaned.match(nameReg);
+        
+        if (match) {
+          const index = match.index;
+          const beforeChar = index > 0 ? cleaned[index - 1] : '';
+          const afterChar = index + match[0].length < cleaned.length ? cleaned[index + match[0].length] : '';
+          
+          const isAlphaNumeric = (char) => /[a-z0-9]/i.test(char);
+          if (!isAlphaNumeric(beforeChar) && !isAlphaNumeric(afterChar)) {
+            const textBefore = cleaned.slice(0, index);
+            const textAfter = cleaned.slice(index + match[0].length);
+            
+            let parsedVal = null;
+            
+            const extractNum = (text) => {
+              let m = text.match(currencyPrefix);
+              if (m) return parseFloat(m[2].replace(/,/g, ''));
+              
+              m = text.match(currencySuffix);
+              if (m) return parseFloat(m[1].replace(/,/g, ''));
+              
+              m = text.match(plainNumber);
+              if (m) return parseFloat(m[1].replace(/,/g, ''));
+              
+              return null;
+            };
+            
+            parsedVal = extractNum(textAfter);
+            if (parsedVal === null) {
+              parsedVal = extractNum(textBefore);
+            }
+            
+            if (parsedVal !== null && !isNaN(parsedVal)) {
+              res[ch.id] = (res[ch.id] || 0) + parsedVal;
+            }
+          }
         }
       });
     });
@@ -687,10 +741,28 @@ function App() {
     const rec = new Speech(); rec.continuous = true; rec.interimResults = false; rec.lang = "en-US";
     rec.onresult = (e) => {
       const last = e.results[e.results.length - 1][0].transcript.toLowerCase();
-      data.chatters.forEach((ch) => {
-        if (last.includes(ch.name.toLowerCase())) {
-          const m = last.match(/([0-9]+)/);
-          if (m) { setVal(ch.id, getVals(ch.id).length - 1, m[1]); }
+      salesChatters.forEach((ch) => {
+        const escapedName = ch.name.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const nameReg = new RegExp(escapedName, 'i');
+        const match = last.match(nameReg);
+        if (match) {
+          const index = match.index;
+          const beforeChar = index > 0 ? last[index - 1] : '';
+          const afterChar = index + match[0].length < last.length ? last[index + match[0].length] : '';
+          
+          const isAlphaNumeric = (char) => /[a-z0-9]/i.test(char);
+          if (!isAlphaNumeric(beforeChar) && !isAlphaNumeric(afterChar)) {
+            const textBefore = last.slice(0, index);
+            const textAfter = last.slice(index + match[0].length);
+            
+            let numMatch = textAfter.match(/([0-9]+)/);
+            if (!numMatch) {
+              numMatch = textBefore.match(/([0-9]+)/);
+            }
+            if (numMatch) {
+              setVal(ch.id, getVals(ch.id).length - 1, numMatch[1]);
+            }
+          }
         }
       });
     };
@@ -1410,6 +1482,16 @@ function App() {
         <p style={{ fontSize: 13, color: C.textDim, marginBottom: 12, lineHeight: 1.5 }}>
           Paste raw reports or chat logs here. We'll automatically find chatter names and their sales.
         </p>
+        {!salesClientId && (
+          <div style={{
+            background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.15)",
+            borderRadius: 12, padding: "10px 14px", marginBottom: 16, color: "#fbbf24", fontSize: 13,
+            display: "flex", alignItems: "center", gap: 8
+          }}>
+            <span>⚠️</span>
+            <span>Please select a client in the "Record Sales" tab first.</span>
+          </div>
+        )}
         <textarea
           value={pastedText}
           onChange={(e) => setPastedText(e.target.value)}
@@ -1446,7 +1528,7 @@ function App() {
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <Btn variant="secondary" onClick={() => setSmartPasteOpen(false)}>Cancel</Btn>
           {!parsedResults ? (
-            <Btn onClick={parseSales} disabled={!pastedText.trim()}>Scan Text</Btn>
+            <Btn onClick={parseSales} disabled={!pastedText.trim() || !salesClientId}>Scan Text</Btn>
           ) : (
             <Btn onClick={applyParsed} disabled={Object.keys(parsedResults).length === 0}>Apply to Inputs</Btn>
           )}
