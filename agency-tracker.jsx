@@ -800,7 +800,7 @@ function App() {
 
   const clientStats = data.clients.map((cl) => {
     const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && data.chatters.find((c) => c.id === r.chatterId)?.clientId === cl.id);
-    return { id: cl.id, name: cl.name, total: recs.reduce((s, r) => s + r.amount, 0), agency: recs.reduce((s, r) => s + r.agencyCut, 0), chatterPay: recs.reduce((s, r) => s + r.chatterCut, 0), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length };
+    return { id: cl.id, name: cl.name, agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: recs.reduce((s, r) => s + r.amount, 0), agency: recs.reduce((s, r) => s + r.agencyCut, 0), chatterPay: recs.reduce((s, r) => s + r.chatterCut, 0), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length };
   });
 
   const chatterStats = data.chatters.map((ch) => {
