@@ -201,7 +201,7 @@ function Modal({ open, onClose, title, children }) {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ margin: 0, fontSize: 19, fontWeight: 600 }}>{title}</h3>
-          <button onClick={onClose} style={{
+          <button onClick={onClose} aria-label="Close dialog" style={{
             background: "rgba(255,255,255,0.05)", border: "none", color: C.textMuted,
             width: 30, height: 30, borderRadius: 8, cursor: "pointer", fontSize: 14,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -957,6 +957,10 @@ function App() {
         @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
         .glass { backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); }
+        :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+        }
         input[type="number"]::-webkit-inner-spin-button,
         input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
         input[type="number"] { -moz-appearance: textfield; }
@@ -1055,7 +1059,7 @@ function App() {
                 <input
                   type="date"
                   value={dashFilterDate === "all" ? "" : dashFilterDate}
-                  onChange={(e) => setDashFilterDate(e.target.value || "all")}
+                  onChange={(e) => setDashFilterDate(e.target.value || "all")} aria-label="Filter dashboard by date"
                   style={{
                     padding: "7px 12px", background: "var(--surface)", border: "1px solid rgba(255,255,255,0.06)",
                     borderRadius: 9, color: "#fff", fontSize: 13, fontFamily: "'Outfit',sans-serif", cursor: "pointer"
@@ -1188,7 +1192,7 @@ function App() {
                 </Btn>
                 <Btn variant="secondary" onClick={() => setSmartPasteOpen(true)} style={{ marginBottom: 14, fontSize: 12, padding: "8px 16px" }}>✨ Smart Paste</Btn>
                 <Field label="Client">
-                  <select value={salesClientId} onChange={(e) => setSalesClientId(e.target.value)} style={{ ...inpStyle, width: 170, cursor: "pointer", background: "var(--surface)" }}>
+                  <select value={salesClientId} aria-label="Select client for sales entry" onChange={(e) => setSalesClientId(e.target.value)} style={{ ...inpStyle, width: 170, cursor: "pointer", background: "var(--surface)" }}>
                     <option value="">Select Client...</option>
                     <option value="all">All Clients</option>
                     {data.clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
@@ -1260,7 +1264,7 @@ function App() {
                                     onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.07)"; }}
                                   />
                                   {vals.length > 1 && (
-                                    <button type="button" onClick={() => removeField(c.id, idx)} style={{
+                                    <button type="button" onClick={() => removeField(c.id, idx)} aria-label="Remove amount field" style={{
                                       position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)",
                                       background: "none", border: "none", color: "rgba(255,255,255,0.12)",
                                       cursor: "pointer", fontSize: 11, padding: "2px 3px",
@@ -1454,13 +1458,13 @@ function App() {
               border: "1px solid " + C.cardBorder, borderRadius: 16
             }}>
               <Field label="Client">
-                <select value={filterClient} onChange={(e) => { setFilterClient(e.target.value); setFilterChatter("all"); }} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
+                <select value={filterClient} aria-label="Filter by client" onChange={(e) => { setFilterClient(e.target.value); setFilterChatter("all"); }} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
                   <option value="all">All Clients</option>
                   {data.clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
                 </select>
               </Field>
               <Field label="Chatter">
-                <select value={filterChatter} onChange={(e) => setFilterChatter(e.target.value)} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
+                <select value={filterChatter} aria-label="Filter by chatter" onChange={(e) => setFilterChatter(e.target.value)} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
                   <option value="all">All Chatters</option>
                   {(filterClient === "all" ? data.chatters : data.chatters.filter((ch) => ch.clientId === filterClient)).map((ch) => (
                     <option key={ch.id} value={ch.id}>{ch.name}</option>
@@ -1468,7 +1472,7 @@ function App() {
                 </select>
               </Field>
               <Field label="Month">
-                <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
+                <select value={filterMonth} aria-label="Filter by month" onChange={(e) => setFilterMonth(e.target.value)} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
                   <option value="all">All Months</option>
                   {months.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
