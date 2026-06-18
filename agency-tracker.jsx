@@ -36,6 +36,64 @@ const shortDate = (d) => {
 };
 const AGENCY_CUT = 0.075;
 const CHATTER_CUT = 0.125;
+
+/* ── Productization: per-agency config. Defaults reproduce the current app exactly,
+   so adding this changes nothing visible. Later steps make the UI read from it. ── */
+const defaultConfig = {
+  business: {
+    name: "Fanlink Chatting",
+    tagline: "Chatting Agency",
+    logo: "/logo.svg",
+    address: ["Ghansoli", "Navi Mumbai", "Vashi 400703", "Maharashtra MH", "India"],
+    country: "India",
+  },
+  locale: {
+    locale: "en-US",
+    currency: "USD",
+    currencySymbol: "$",
+    amountInWords: true,
+    currencyWords: { major: "Dollars", minor: "Cents" },
+    taxRate: 0,
+    taxLabel: "Tax",
+    taxLine: "Place of supply: Maharashtra",
+  },
+  terms: {
+    client: { one: "Client", many: "Clients" },
+    staff: { one: "Chatter", many: "Chatters" },
+    revenue: { one: "Sale", many: "Sales" },
+    agencyShareLabel: "Agency Cut",
+    staffShareLabel: "Chatter Pay",
+  },
+  branding: {
+    accent: "#5EEAD4",
+  },
+  invoice: {
+    title: "Customer Invoices",
+    numberPrefix: "INV/25-26/",
+    lineItemLabel: "Agency Fees",
+    notes: "Please make the payment within 7 days.",
+    signatory: "Authorized Signatory",
+    dueDays: 0,
+  },
+  commission: {
+    model: "percent",
+    defaults: { agencyShare: AGENCY_CUT, staffShare: CHATTER_CUT },
+  },
+};
+
+// Merge a saved config over defaults so older saves still pick up new keys.
+const mergeConfig = (saved) => {
+  const base = JSON.parse(JSON.stringify(defaultConfig));
+  if (!saved || typeof saved !== "object") return base;
+  for (const k of Object.keys(base)) {
+    if (saved[k] && typeof saved[k] === "object" && !Array.isArray(saved[k])) {
+      base[k] = { ...base[k], ...saved[k] };
+    } else if (saved[k] !== undefined) {
+      base[k] = saved[k];
+    }
+  }
+  return base;
+};
 const LOGO = "/logo.svg";
 
 const toWords = (num) => {
@@ -669,6 +727,7 @@ function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDone
 
 function App() {
   const [data, setData] = useState(defaultState);
+  const config = data.config || defaultConfig;
   const [tab, setTab] = useState("Dashboard");
   const [loading, setLoading] = useState(true);
 
@@ -720,7 +779,15 @@ function App() {
   const importRef = useRef(null);
 
   useEffect(() => {
-    loadData().then((d) => { if (d) setData(d); setLoading(false); });
+    loadData().then((d) => {
+      setData((prev) => ({
+        clients: d?.clients ?? prev.clients,
+        chatters: d?.chatters ?? prev.chatters,
+        records: d?.records ?? prev.records,
+        config: mergeConfig(d?.config),
+      }));
+      setLoading(false);
+    });
   }, []);
 
   const persist = (d) => { setData(d); saveData(d); };
@@ -1003,7 +1070,7 @@ function App() {
   };
 
   const exportBackup = () => {
-    const payload = JSON.stringify({ _app: "fanlink-tracker", _version: 4, _exportedAt: new Date().toISOString(), ...data }, null, 2);
+    const payload = JSON.stringify({ _app: "fanlink-tracker", _version: 5, _exportedAt: new Date().toISOString(), ...data }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `fanlink-backup-${today()}.json`; a.click();
@@ -1024,7 +1091,7 @@ function App() {
           `Import ${p.clients.length} clients, ${p.chatters.length} chatters and ${p.records.length} sales?\n\nThis replaces everything currently in the app. Export a backup first if you're unsure.`
         );
         if (!ok) return;
-        persist({ clients: p.clients, chatters: p.chatters, records: p.records });
+        persist({ clients: p.clients, chatters: p.chatters, records: p.records, config: mergeConfig(p.config) });
       } catch {
         alert("Couldn't read that file — make sure it's a JSON backup exported from this app.");
       } finally {
