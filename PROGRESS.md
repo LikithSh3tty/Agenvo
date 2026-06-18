@@ -21,7 +21,7 @@ Build check after any change: `node node_modules/vite/bin/vite.js build` (or `np
 - [x] Step 4 — Accessibility pass: aria-labels on icon-only buttons, labelled inputs,
       visible keyboard focus, respect reduced-motion
 - [x] Step 5 — Settings: JSON backup export + import (local file, no backend)
-- [ ] Step 6 — Smart Paste: review/confirm screen before applying + respect parsed currency
+- [x] Step 6 — Smart Paste: review/confirm screen before applying + respect parsed currency
 
 ## Deferred (bigger, do deliberately later)
 - [ ] Money as integer cents (touches all math — do as its own focused pass)

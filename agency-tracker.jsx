@@ -579,7 +579,7 @@ function App() {
   // Smart Paste
   const [smartPasteOpen, setSmartPasteOpen] = useState(false);
   const [pastedText, setPastedText] = useState("");
-  const [parsedResults, setParsedResults] = useState(null);
+  const [reviewItems, setReviewItems] = useState(null);
 
   // Refs & Voice
   const [isListening, setIsListening] = useState(false);
@@ -794,19 +794,33 @@ function App() {
             }
             
             if (parsedVal !== null && !isNaN(parsedVal)) {
-              res[ch.id] = (res[ch.id] || 0) + parsedVal;
+              if (!res[ch.id]) res[ch.id] = { sum: 0, count: 0 };
+              res[ch.id].sum += parsedVal;
+              res[ch.id].count += 1;
             }
           }
         }
       });
     });
-    setParsedResults(res);
+    const items = Object.entries(res)
+      .map(([id, o]) => ({ id, name: chatterNameFn(id), amount: o.sum, count: o.count, included: true }))
+      .sort((a, b) => b.amount - a.amount);
+    setReviewItems(items);
   };
 
+  const setReviewAmount = (id, val) =>
+    setReviewItems((items) => items.map((it) => (it.id === id ? { ...it, amount: val } : it)));
+  const toggleReviewItem = (id) =>
+    setReviewItems((items) => items.map((it) => (it.id === id ? { ...it, included: !it.included } : it)));
+
   const applyParsed = () => {
+    if (!reviewItems) return;
     const next = { ...bulkAmounts };
-    Object.entries(parsedResults).forEach(([id, val]) => { next[id] = [val.toString(), ""]; });
-    setBulkAmounts(next); setParsedResults(null); setPastedText(""); setSmartPasteOpen(false);
+    reviewItems.forEach((it) => {
+      const num = parseFloat(it.amount);
+      if (it.included && !isNaN(num) && num > 0) next[it.id] = [String(num), ""];
+    });
+    setBulkAmounts(next); setReviewItems(null); setPastedText(""); setSmartPasteOpen(false);
   };
 
   const toggleVoice = () => {
@@ -1779,7 +1793,7 @@ function App() {
         )}
         <textarea
           value={pastedText}
-          onChange={(e) => setPastedText(e.target.value)}
+          onChange={(e) => { setPastedText(e.target.value); if (reviewItems) setReviewItems(null); }}
           placeholder="e.g. John: $450.00&#10;Sarah had a great day with 250..."
           style={{
             ...inpStyle, height: 180, resize: "none", fontSize: 13, lineHeight: 1.6,
@@ -1787,35 +1801,61 @@ function App() {
           }}
         />
 
-        {parsedResults && Object.keys(parsedResults).length > 0 && (
+        {reviewItems && reviewItems.length > 0 && (
           <div style={{
             background: "rgba(173,255,180,0.05)", border: "1px solid " + C.accentBorder,
             borderRadius: 12, padding: 14, marginBottom: 18
           }}>
-            <div style={{ fontSize: 11, color: C.textDim, fontFamily: "'JetBrains Mono',monospace", marginBottom: 8 }}>DETECTED SALES</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {Object.entries(parsedResults).map(([id, val]) => (
-                <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
-                  <span style={{ fontWeight: 600 }}>{chatterNameFn(id)}</span>
-                  <span style={{ color: C.accent, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(val)}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 11, color: C.textDim, fontFamily: "'JetBrains Mono',monospace" }}>REVIEW DETECTED SALES</span>
+              <span style={{ fontSize: 11, color: C.textMuted }}>Edit or uncheck before applying</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {reviewItems.map((it) => (
+                <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10, opacity: it.included ? 1 : 0.4 }}>
+                  <input type="checkbox" checked={it.included} onChange={() => toggleReviewItem(it.id)}
+                    aria-label={"Include " + it.name} style={{ width: 16, height: 16, accentColor: "var(--accent)", cursor: "pointer" }} />
+                  <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{it.name}</span>
+                  {it.count > 1 && (
+                    <span title={it.count + " numbers were added together — check this is right"}
+                      style={{ fontSize: 10, color: C.earn, fontFamily: "'JetBrains Mono',monospace", border: "1px solid rgba(251,191,36,0.3)", borderRadius: 5, padding: "1px 5px" }}>
+                      {it.count} summed
+                    </span>
+                  )}
+                  <div style={{ position: "relative" }}>
+                    <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 12 }}>$</span>
+                    <input type="number" step="0.01" min="0" value={it.amount}
+                      onChange={(e) => setReviewAmount(it.id, e.target.value)}
+                      disabled={!it.included}
+                      aria-label={it.name + " detected amount"}
+                      style={{ width: 110, padding: "6px 8px 6px 18px", background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)", borderRadius: 7, color: C.accent, fontSize: 13,
+                        fontFamily: "'JetBrains Mono',monospace", outline: "none", textAlign: "right" }} />
+                  </div>
                 </div>
               ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <span style={{ fontSize: 12, color: C.textDim }}>Total to add</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>
+                {fmt(reviewItems.reduce((s, it) => s + (it.included ? (parseFloat(it.amount) || 0) : 0), 0))}
+              </span>
             </div>
           </div>
         )}
 
-        {parsedResults && Object.keys(parsedResults).length === 0 && (
+        {reviewItems && reviewItems.length === 0 && (
           <div style={{ textAlign: "center", padding: 12, color: "#ff7f7f", fontSize: 13, marginBottom: 16 }}>
-            No sales or chatter names detected. Try adjusting the text.
+            No sales or chatter names detected. Check the names match your chatters, then try again.
           </div>
         )}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <Btn variant="secondary" onClick={() => setSmartPasteOpen(false)}>Cancel</Btn>
-          {!parsedResults ? (
-            <Btn onClick={parseSales} disabled={!pastedText.trim() || !salesClientId}>Scan Text</Btn>
+          <Btn variant="secondary" onClick={() => { setSmartPasteOpen(false); setReviewItems(null); }}>Cancel</Btn>
+          {!reviewItems ? (
+            <Btn onClick={parseSales} disabled={!pastedText.trim() || !salesClientId}>Scan text</Btn>
           ) : (
-            <Btn onClick={applyParsed} disabled={Object.keys(parsedResults).length === 0}>Apply to Inputs</Btn>
+            <Btn onClick={applyParsed} disabled={!reviewItems.some((it) => it.included && parseFloat(it.amount) > 0)}>Apply to inputs</Btn>
           )}
         </div>
       </Modal>
