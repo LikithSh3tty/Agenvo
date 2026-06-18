@@ -34,61 +34,24 @@ const toWords = (num) => {
   return str;
 };
 
-const THEMES = {
-  dark: {
-    name: "Dark Premium",
-    bg: "#0a0d0b",
-    card: "rgba(173,255,180,0.02)",
-    cardBorder: "rgba(173,255,180,0.06)",
-    accent: "#adffb4",
-    accent2: "#7aed84",
-    accent3: "#4cdb5a",
-    accentGlow: "rgba(173,255,180,0.12)",
-    accentDim: "rgba(173,255,180,0.08)",
-    accentBorder: "rgba(173,255,180,0.15)",
-    textDim: "rgba(255,255,255,0.45)",
-    textMuted: "rgba(255,255,255,0.25)",
-    earn: "#fbbf24",
-    surface: "var(--surface)",
-    surface2: "#0d100e",
-    blur: "blur(16px)",
-  },
-  glass: {
-    name: "Glassmorphism",
-    bg: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)",
-    card: "rgba(255,255,255,0.03)",
-    cardBorder: "rgba(255,255,255,0.1)",
-    accent: "#60a5fa",
-    accent2: "#3b82f6",
-    accent3: "#2563eb",
-    accentGlow: "rgba(96,165,250,0.15)",
-    accentDim: "rgba(96,165,250,0.1)",
-    accentBorder: "rgba(96,165,250,0.2)",
-    textDim: "rgba(255,255,255,0.5)",
-    textMuted: "rgba(255,255,255,0.3)",
-    earn: "#fbbf24",
-    surface: "#161b2e",
-    surface2: "#10131f",
-    blur: "blur(24px)",
-  },
-  sunset: {
-    name: "Sunset Ridge",
-    bg: "linear-gradient(135deg, #1e0a16 0%, #2d0f11 100%)",
-    card: "rgba(251,113,133,0.03)",
-    cardBorder: "rgba(251,113,133,0.1)",
-    accent: "#fb7185",
-    accent2: "#f43f5e",
-    accent3: "#e11d48",
-    accentGlow: "rgba(251,113,133,0.15)",
-    accentDim: "rgba(251,113,133,0.1)",
-    accentBorder: "rgba(251,113,133,0.2)",
-    textDim: "rgba(255,255,255,0.5)",
-    textMuted: "rgba(255,255,255,0.3)",
-    earn: "#fbbf24",
-    surface: "#241016",
-    surface2: "#1b0b10",
-    blur: "blur(20px)",
-  }
+const THEME = {
+  name: "Operator Console",
+  bg: "#070A09",
+  card: "rgba(255,255,255,0.035)",
+  cardBorder: "rgba(255,255,255,0.07)",
+  accent: "#5EEAD4",
+  accent2: "#34D399",
+  accent3: "#2DD4BF",
+  accentGlow: "rgba(94,234,212,0.14)",
+  accentDim: "rgba(94,234,212,0.08)",
+  accentBorder: "rgba(94,234,212,0.16)",
+  textDim: "rgba(234,242,238,0.55)",
+  textMuted: "rgba(234,242,238,0.30)",
+  earn: "#FBBF24",
+  violet: "#A78BFA",
+  surface: "#0E1411",
+  surface2: "#0A0F0D",
+  blur: "blur(16px)",
 };
 
 const C = {
@@ -104,6 +67,7 @@ const C = {
   textDim: "var(--text-dim)",
   textMuted: "var(--text-muted)",
   earn: "var(--earn)",
+  violet: "var(--violet)",
   surface: "var(--surface)",
   surface2: "var(--surface2)",
   blur: "var(--blur)",
@@ -236,9 +200,9 @@ function Btn({ children, onClick, disabled, variant, style: s }) {
   const isPrimary = variant !== "secondary";
   const base = isPrimary
     ? {
-      background: disabled ? "rgba(173,255,180,0.15)" : "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
-      color: "#0a0d0b",
-      boxShadow: disabled ? "none" : "0 4px 24px rgba(173,255,180,0.2)",
+      background: disabled ? "rgba(94,234,212,0.15)" : "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
+      color: "#04231b",
+      boxShadow: disabled ? "none" : "0 4px 24px rgba(94,234,212,0.2)",
     }
     : {
       background: "rgba(255,255,255,0.04)",
@@ -343,15 +307,15 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose }) {
       <div style={{
         background: "linear-gradient(160deg,#0d1a10,#0a1a0d 40%,#0f2213)",
         borderRadius: 18, padding: "26px 28px", marginBottom: 18,
-        border: "1px solid rgba(173,255,180,0.12)", position: "relative", overflow: "hidden",
+        border: "1px solid rgba(94,234,212,0.12)", position: "relative", overflow: "hidden",
       }}>
         <div style={{
           position: "absolute", top: -30, right: -30, width: 120, height: 120,
-          borderRadius: "50%", background: "rgba(173,255,180,0.06)", filter: "blur(30px)",
+          borderRadius: "50%", background: "rgba(94,234,212,0.06)", filter: "blur(30px)",
         }} />
         <div style={{
           position: "absolute", bottom: -20, left: -20, width: 80, height: 80,
-          borderRadius: "50%", background: "rgba(173,255,180,0.04)", filter: "blur(20px)",
+          borderRadius: "50%", background: "rgba(94,234,212,0.04)", filter: "blur(20px)",
         }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
@@ -400,7 +364,7 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose }) {
             </div>
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "12px 14px", background: "rgba(173,255,180,0.05)", borderRadius: 10,
+              padding: "12px 14px", background: "rgba(94,234,212,0.05)", borderRadius: 10,
               border: "1px solid " + C.accentBorder,
             }}>
               <span style={{ fontWeight: 600, fontSize: 13, color: C.textDim }}>Total Payouts</span>
@@ -537,7 +501,6 @@ function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDone
 function App() {
   const [data, setData] = useState(defaultState);
   const [tab, setTab] = useState("Dashboard");
-  const [currentTheme, setCurrentTheme] = useState("dark");
   const [loading, setLoading] = useState(true);
 
   const [salesClientId, setSalesClientId] = useState("");
@@ -588,12 +551,10 @@ function App() {
   const importRef = useRef(null);
 
   useEffect(() => {
-    loadData().then((d) => { if (d) { setData(d); if (d.theme && THEMES[d.theme]) setCurrentTheme(d.theme); } setLoading(false); });
+    loadData().then((d) => { if (d) setData(d); setLoading(false); });
   }, []);
 
   const persist = (d) => { setData(d); saveData(d); };
-
-  const changeTheme = (t) => { setCurrentTheme(t); persist({ ...data, theme: t }); };
 
   // Populate the edit-cut fields whenever a client is opened for editing.
   useEffect(() => {
@@ -894,9 +855,7 @@ function App() {
           `Import ${p.clients.length} clients, ${p.chatters.length} chatters and ${p.records.length} sales?\n\nThis replaces everything currently in the app. Export a backup first if you're unsure.`
         );
         if (!ok) return;
-        const theme = p.theme && THEMES[p.theme] ? p.theme : currentTheme;
-        persist({ clients: p.clients, chatters: p.chatters, records: p.records, theme });
-        setCurrentTheme(theme);
+        persist({ clients: p.clients, chatters: p.chatters, records: p.records });
       } catch {
         alert("Couldn't read that file — make sure it's a JSON backup exported from this app.");
       } finally {
@@ -989,31 +948,48 @@ function App() {
         {`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
         :root {
-          --accent: ${THEMES[currentTheme].accent};
-          --accent2: ${THEMES[currentTheme].accent2};
-          --accent3: ${THEMES[currentTheme].accent3};
-          --accent-glow: ${THEMES[currentTheme].accentGlow};
-          --accent-dim: ${THEMES[currentTheme].accentDim};
-          --accent-border: ${THEMES[currentTheme].accentBorder};
-          --bg: ${THEMES[currentTheme].bg};
-          --card-bg: ${THEMES[currentTheme].card};
-          --card-border: ${THEMES[currentTheme].cardBorder};
-          --text-dim: ${THEMES[currentTheme].textDim};
-          --text-muted: ${THEMES[currentTheme].textMuted};
-          --earn: ${THEMES[currentTheme].earn};
-          --surface: ${THEMES[currentTheme].surface};
-          --surface2: ${THEMES[currentTheme].surface2};
-          --blur: ${THEMES[currentTheme].blur};
+          --accent: ${THEME.accent};
+          --accent2: ${THEME.accent2};
+          --accent3: ${THEME.accent3};
+          --accent-glow: ${THEME.accentGlow};
+          --accent-dim: ${THEME.accentDim};
+          --accent-border: ${THEME.accentBorder};
+          --bg: ${THEME.bg};
+          --card-bg: ${THEME.card};
+          --card-border: ${THEME.cardBorder};
+          --text-dim: ${THEME.textDim};
+          --text-muted: ${THEME.textMuted};
+          --earn: ${THEME.earn};
+          --violet: ${THEME.violet};
+          --surface: ${THEME.surface};
+          --surface2: ${THEME.surface2};
+          --blur: ${THEME.blur};
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: var(--bg); min-height: 100vh; font-family: 'Outfit', sans-serif; color: #fff; }
+        body {
+          background: var(--bg);
+          background-image:
+            radial-gradient(900px 520px at 10% -10%, rgba(52,211,153,0.13), transparent 60%),
+            radial-gradient(820px 560px at 105% 12%, rgba(167,139,250,0.10), transparent 55%),
+            radial-gradient(760px 700px at 50% 118%, rgba(94,234,212,0.05), transparent 60%);
+          background-attachment: fixed;
+          min-height: 100vh; font-family: 'Outfit', sans-serif; color: #fff;
+        }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        @keyframes riseIn { from { opacity: 0; transform: translateY(16px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes shimmer { 100% { transform: translateX(100%); } }
+        @keyframes auroraSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes ringGrow { from { stroke-dashoffset: var(--circ); } }
+        .rise { opacity: 0; animation: riseIn 0.55s cubic-bezier(.2,.8,.2,1) forwards; }
+        .lift { transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .28s ease; }
+        .lift:hover { transform: translateY(-3px); box-shadow: 0 22px 46px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.08); border-color: var(--accent-border); }
         .glass { backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); }
         :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+          .rise { opacity: 1 !important; }
         }
         input[type="number"]::-webkit-inner-spin-button,
         input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
@@ -1043,7 +1019,7 @@ function App() {
         .print-only { display: none; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(173,255,180,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: rgba(94,234,212,0.1); border-radius: 3px; }
 
         @media (max-width: 640px) {
           .mobile-stack { flex-direction: column !important; align-items: stretch !important; }
@@ -1069,7 +1045,7 @@ function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src={LOGO} alt="Fanlink" style={{
               width: 32, height: 32, borderRadius: 9,
-              boxShadow: "0 4px 16px rgba(173,255,180,0.15)",
+              boxShadow: "0 4px 16px rgba(94,234,212,0.15)",
               objectFit: "contain", background: "rgba(0,0,0,0.15)",
             }} />
             <div>
@@ -1078,20 +1054,6 @@ function App() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div role="group" aria-label="Color theme" style={{ display: "flex", gap: 5, padding: "4px 6px", background: "var(--surface2)", borderRadius: 9, border: "1px solid var(--card-border)" }}>
-              {Object.entries(THEMES).map(([key, t]) => (
-                <button key={key} onClick={() => changeTheme(key)}
-                  aria-label={"Theme: " + t.name} title={t.name}
-                  aria-pressed={currentTheme === key}
-                  style={{
-                    width: 18, height: 18, borderRadius: "50%", cursor: "pointer", padding: 0,
-                    background: t.accent,
-                    border: currentTheme === key ? "2px solid #fff" : "2px solid transparent",
-                    boxShadow: currentTheme === key ? `0 0 0 2px ${t.accent}` : "none",
-                    transition: "transform 0.15s",
-                  }} />
-              ))}
-            </div>
             <div style={{ display: "flex", gap: 5 }}>
               <Badge>{data.clients.length} <span className="mobile-hide">clients</span></Badge>
               <Badge>{data.chatters.length} <span className="mobile-hide">chatters</span></Badge>
@@ -1133,7 +1095,7 @@ function App() {
 
             <div className="mobile-grid" style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
               <StatCard label="Total Sales" value={fmt(totalSales)} accent="var(--accent-glow)" />
-              <StatCard label={agencyCutLabel} value={fmt(totalAgency)} accent="rgba(173,255,180,0.08)" />
+              <StatCard label={agencyCutLabel} value={fmt(totalAgency)} accent="rgba(94,234,212,0.08)" />
               <StatCard label={chatterCutLabel} value={fmt(totalChatterPay)} accent="rgba(251,191,36,0.08)" />
             </div>
 
@@ -1274,7 +1236,7 @@ function App() {
                       <div key={c.id} style={{ marginBottom: 8 }}>
                         <form onSubmit={(e) => handleFormSubmit(e, c.id, vals.length - 1)} className="mobile-p-small" style={{
                           padding: "14px 16px",
-                          background: has ? "rgba(173,255,180,0.025)" : "rgba(255,255,255,0.012)",
+                          background: has ? "rgba(94,234,212,0.025)" : "rgba(255,255,255,0.012)",
                           border: "1px solid " + (has ? C.accentBorder : "rgba(255,255,255,0.04)"),
                           borderRadius: 13, transition: "all 0.2s",
                         }}>
@@ -1314,7 +1276,7 @@ function App() {
                                       borderRadius: 7, color: "#fff", fontSize: 14, outline: "none",
                                       fontFamily: "'JetBrains Mono',monospace", transition: "border-color 0.2s",
                                     }}
-                                    onFocus={(e) => { e.target.style.borderColor = "rgba(173,255,180,0.35)"; }}
+                                    onFocus={(e) => { e.target.style.borderColor = "rgba(94,234,212,0.35)"; }}
                                     onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.07)"; }}
                                   />
                                   {vals.length > 1 && (
@@ -1333,7 +1295,7 @@ function App() {
                           <div className="mobile-p-small" style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between",
                             marginTop: 10, padding: "10px 14px",
-                            background: "rgba(173,255,180,0.05)", borderRadius: 10,
+                            background: "rgba(94,234,212,0.05)", borderRadius: 10,
                             border: "1px solid " + C.accentBorder,
                           }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -1356,9 +1318,9 @@ function App() {
                               clientNameStr: clientNameFn(c.clientId), date: shortDate(salesDate),
                             })} style={{
                               background: "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
-                              border: "none", borderRadius: 8, color: "#0a0d0b", padding: "8px 14px",
+                              border: "none", borderRadius: 8, color: "#04231b", padding: "8px 14px",
                               cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Outfit',sans-serif",
-                              boxShadow: "0 2px 12px rgba(173,255,180,0.15)",
+                              boxShadow: "0 2px 12px rgba(94,234,212,0.15)",
                             }}>📤 Share</button>
                           </div>
                         )}
@@ -1386,9 +1348,9 @@ function App() {
                         if (allCh.length) setShareCard({ chatters: allCh, clientNameStr: salesClientId === "all" ? "All Clients" : clientNameFn(salesClientId), date: shortDate(salesDate) });
                       }} style={{
                         background: "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
-                        border: "none", borderRadius: 7, color: "#0a0d0b", padding: "6px 14px",
+                        border: "none", borderRadius: 7, color: "#04231b", padding: "6px 14px",
                         cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Outfit',sans-serif",
-                        boxShadow: "0 2px 10px rgba(173,255,180,0.12)",
+                        boxShadow: "0 2px 10px rgba(94,234,212,0.12)",
                       }}>📤 Share All</button>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
@@ -1559,7 +1521,7 @@ function App() {
                     <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4, marginBottom: 3 }}>TOTAL</div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(filteredRecords.reduce((s, r) => s + r.amount, 0))}</div>
                   </div>
-                  <div style={{ background: "rgba(173,255,180,0.04)", borderRadius: 11, padding: "12px 18px", flex: "1 1 130px" }}>
+                  <div style={{ background: "rgba(94,234,212,0.04)", borderRadius: 11, padding: "12px 18px", flex: "1 1 130px" }}>
                     <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4, marginBottom: 3 }}>YOUR CUT</div>
                     <div style={{ fontSize: 18, fontWeight: 700, color: C.accent2 }}>{fmt(filteredRecords.reduce((s, r) => s + r.agencyCut, 0))}</div>
                   </div>
@@ -1576,7 +1538,7 @@ function App() {
                 <div className="mobile-scroll-x" style={{ borderRadius: 14, overflow: "hidden", border: "1px solid " + C.cardBorder }}>
                   <div style={{
                     display: "grid", gridTemplateColumns: "1fr 0.8fr 0.7fr 0.9fr 0.7fr 0.7fr 64px",
-                    minWidth: 600, padding: "10px 18px", background: "rgba(173,255,180,0.015)",
+                    minWidth: 600, padding: "10px 18px", background: "rgba(94,234,212,0.015)",
                     fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace",
                     letterSpacing: 0.7, textTransform: "uppercase", gap: 6,
                   }}>
@@ -1585,7 +1547,7 @@ function App() {
                   {filteredRecords.map((r) => (
                     <div key={r.id} style={{
                       display: "grid", gridTemplateColumns: "1fr 0.8fr 0.7fr 0.9fr 0.7fr 0.7fr 64px",
-                      minWidth: 600, padding: "12px 18px", borderTop: "1px solid rgba(173,255,180,0.03)",
+                      minWidth: 600, padding: "12px 18px", borderTop: "1px solid rgba(94,234,212,0.03)",
                       fontSize: 13, alignItems: "center", gap: 6,
                     }}>
                       <div style={{ fontWeight: 600 }}>{chatterNameFn(r.chatterId)}</div>
@@ -1803,7 +1765,7 @@ function App() {
 
         {reviewItems && reviewItems.length > 0 && (
           <div style={{
-            background: "rgba(173,255,180,0.05)", border: "1px solid " + C.accentBorder,
+            background: "rgba(94,234,212,0.05)", border: "1px solid " + C.accentBorder,
             borderRadius: 12, padding: 14, marginBottom: 18
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
