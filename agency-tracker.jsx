@@ -115,59 +115,53 @@ const printElement = (elId, title) => {
   const el = document.getElementById(elId);
   if (!el) return;
 
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  document.body.appendChild(iframe);
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&family=Inter:wght@400;600;700&display=swap');
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #111; font-family: 'Inter', sans-serif; }
+    body { padding: 16px; }
+    #invoice-printable { width: 100% !important; max-width: 760px !important; min-height: 0 !important; margin: 0 auto !important; box-shadow: none !important; padding: 24px !important; }
+    #history-printable, #history-printable * { color: #111 !important; background: transparent !important; border-color: #ddd !important; }
+    .no-print, .no-print-modal-overlay { display: none !important; }
+    @media print { @page { margin: 14mm; size: auto; } body { padding: 0; } }
+  `;
 
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title || "Print"}</title><style>${css}</style></head><body>${el.outerHTML}<script>
+    (function(){
+      function go(){ try { window.focus(); } catch(e){} try { window.print(); } catch(e){} }
+      window.onafterprint = function(){ setTimeout(function(){ try { window.close(); } catch(e){} }, 300); };
+      var imgs = Array.prototype.slice.call(document.images || []);
+      var pending = imgs.filter(function(i){ return !i.complete; });
+      if (pending.length === 0) { setTimeout(go, 350); return; }
+      var done = 0;
+      pending.forEach(function(i){
+        var f = function(){ if (++done >= pending.length) setTimeout(go, 200); };
+        i.addEventListener('load', f); i.addEventListener('error', f);
+      });
+      setTimeout(go, 1600);
+    })();
+  <\/script></body></html>`;
+
+  // Preferred path: a real, visible window. Reliable on mobile Safari/Chrome,
+  // where a hidden 0x0 iframe often prints blank or never fires.
+  let w = null;
+  try { w = window.open("", "_blank"); } catch (e) { w = null; }
+  if (w && w.document) {
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    return;
+  }
+
+  // Fallback for blocked popups (typically desktop): hidden iframe.
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  document.body.appendChild(iframe);
   const doc = iframe.contentWindow.document;
   doc.open();
-  doc.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>${title || "Print"}</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&family=Inter:wght@400;600;700&display=swap');
-          body { 
-            margin: 0; padding: 0; background: #fff; color: #000;
-            font-family: 'Inter', sans-serif; 
-            -webkit-print-color-adjust: exact !important; 
-            print-color-adjust: exact !important; 
-          }
-          #invoice-printable { 
-            width: 720px !important; 
-            margin: 0 auto !important; 
-            padding: 30px !important;
-            box-shadow: none !important;
-            display: block !important;
-            box-sizing: border-box !important;
-          }
-          @media print {
-            @page { margin: 0; size: auto; }
-            body { margin: 20mm !important; background: #fff !important; }
-            .no-print { display: none !important; }
-          }
-        </style>
-      </head>
-      <body>
-        ${el.outerHTML}
-        <script>
-          window.onload = () => {
-            setTimeout(() => {
-              window.print();
-              setTimeout(() => { window.frameElement.remove(); }, 100);
-            }, 500);
-          };
-        <\/script>
-      </body>
-    </html>
-  `);
+  doc.write(html);
   doc.close();
+  setTimeout(() => { try { iframe.remove(); } catch (e) {} }, 60000);
 };
 
 /* ═══ UI COMPONENTS ═══ */
