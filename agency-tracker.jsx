@@ -939,7 +939,12 @@ function App() {
 
   const months = [...new Set(data.records.map((r) => new Date(r.date + "T00:00:00").toLocaleString("default", { month: "long", year: "numeric" })))];
 
-  if (loading) return null;
+  // Loader: keep the splash up briefly so it reads as intentional, then fade out.
+  const [bootDone, setBootDone] = useState(false);
+  const [loaderGone, setLoaderGone] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setBootDone(true), 900); return () => clearTimeout(t); }, []);
+  const ready = !loading && bootDone;
+  useEffect(() => { if (ready) { const t = setTimeout(() => setLoaderGone(true), 520); return () => clearTimeout(t); } }, [ready]);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "#fff", fontFamily: "'Outfit',sans-serif" }}>
@@ -982,6 +987,10 @@ function App() {
         @keyframes shimmer { 100% { transform: translateX(100%); } }
         @keyframes auroraSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes ringGrow { from { stroke-dashoffset: var(--circ); } }
+        @keyframes loaderGlow { 0%,100% { box-shadow: 0 10px 40px rgba(52,211,153,0.35), inset 0 1px 0 rgba(255,255,255,0.5); } 50% { box-shadow: 0 14px 60px rgba(94,234,212,0.6), inset 0 1px 0 rgba(255,255,255,0.6); } }
+        @keyframes loaderFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        @keyframes barSweep { 0% { left: -40%; } 100% { left: 100%; } }
+        @keyframes spinIn { from { transform: rotate(-120deg) scale(0.6); opacity: 0; } to { transform: rotate(0) scale(1); opacity: 1; } }
         .rise { opacity: 0; animation: riseIn 0.55s cubic-bezier(.2,.8,.2,1) forwards; }
         .lift { transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .28s ease; }
         .lift:hover { transform: translateY(-3px); box-shadow: 0 22px 46px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.08); border-color: var(--accent-border); }
@@ -1034,8 +1043,34 @@ function App() {
         `}
       </style>
 
+      {/* Boot loader */}
+      {!loaderGone && (
+        <div aria-hidden="true" style={{
+          position: "fixed", inset: 0, zIndex: 3000, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", gap: 26,
+          background: "var(--bg)",
+          backgroundImage: "radial-gradient(800px 500px at 50% 30%, rgba(52,211,153,0.14), transparent 60%), radial-gradient(700px 600px at 50% 120%, rgba(167,139,250,0.10), transparent 55%)",
+          opacity: ready ? 0 : 1, transform: ready ? "scale(1.04)" : "scale(1)",
+          transition: "opacity 0.5s ease, transform 0.5s ease", pointerEvents: ready ? "none" : "auto",
+        }}>
+          <div style={{
+            width: 76, height: 76, borderRadius: 22, display: "grid", placeItems: "center",
+            background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b",
+            fontWeight: 800, fontSize: 40, fontFamily: "'Outfit',sans-serif",
+            animation: "spinIn 0.6s cubic-bezier(.2,.8,.2,1), loaderGlow 2.4s ease-in-out 0.6s infinite, loaderFloat 3s ease-in-out 0.6s infinite",
+          }}>f</div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: -0.3 }}>fanlink</div>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase", marginTop: 4 }}>Chatting agency</div>
+          </div>
+          <div style={{ width: 180, height: 3, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden", position: "relative" }}>
+            <div style={{ position: "absolute", top: 0, width: "40%", height: "100%", borderRadius: 99,
+              background: "linear-gradient(90deg, transparent, var(--accent), transparent)",
+              animation: "barSweep 1.1s ease-in-out infinite" }} />
+          </div>
+        </div>
+      )}
 
-      {/* HEADER */}
       <div className="no-print" style={{
         borderBottom: "1px solid var(--card-border)", padding: "12px 0",
         background: "rgba(10,13,11,0.9)", backdropFilter: "var(--blur)",
