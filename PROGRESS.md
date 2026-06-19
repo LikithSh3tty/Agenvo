@@ -67,4 +67,4 @@ errors with a missing rollup module, run `npm install @rollup/rollup-linux-x64-g
 - [x] Step 7 — De-hardcode invoice (address, tax line, number format, notes).
 - [ ] Step 8 — Flexible commission engine (%, flat, tiered) — the core, do carefully.
 - [x] Step 9 — Settings screen to edit all of the above.
-- [ ] Step 10 — Onboarding wizard + agency presets (digital / web / chatting).
+- [x] Step 10 — Onboarding wizard + agency presets (digital / web / chatting).

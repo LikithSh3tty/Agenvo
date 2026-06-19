@@ -100,6 +100,31 @@ const defaultConfig = {
     model: "percent",
     defaults: { agencyShare: AGENCY_CUT, staffShare: CHATTER_CUT },
   },
+  onboarded: false,
+};
+
+// First-run presets: pick one and the app pre-fills wording + default commission.
+const AGENCY_PRESETS = {
+  chatting: {
+    label: "Chatting agency", icon: "💬", tagline: "Chatting Agency",
+    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Chatter", many: "Chatters" }, revenue: { one: "Sale", many: "Sales" }, agencyShareLabel: "Agency Cut", staffShareLabel: "Chatter Pay" },
+    commission: { agencyShare: 0.075, staffShare: 0.125 }, lineItemLabel: "Agency Fees",
+  },
+  marketing: {
+    label: "Marketing / digital", icon: "📈", tagline: "Marketing Agency",
+    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Specialist", many: "Specialists" }, revenue: { one: "Campaign", many: "Campaigns" }, agencyShareLabel: "Agency Fee", staffShareLabel: "Specialist Pay" },
+    commission: { agencyShare: 0.20, staffShare: 0.10 }, lineItemLabel: "Marketing Services",
+  },
+  web: {
+    label: "Web / design studio", icon: "🎨", tagline: "Web & Design Studio",
+    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Developer", many: "Developers" }, revenue: { one: "Project", many: "Projects" }, agencyShareLabel: "Agency Fee", staffShareLabel: "Developer Pay" },
+    commission: { agencyShare: 0.30, staffShare: 0.15 }, lineItemLabel: "Development Services",
+  },
+  custom: {
+    label: "Something else", icon: "✨", tagline: "Agency",
+    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Team Member", many: "Team Members" }, revenue: { one: "Job", many: "Jobs" }, agencyShareLabel: "Agency Share", staffShareLabel: "Team Pay" },
+    commission: { agencyShare: 0.10, staffShare: 0.10 }, lineItemLabel: "Services",
+  },
 };
 
 // Merge a saved config over defaults so older saves still pick up new keys.
@@ -947,11 +972,144 @@ function SettingsPanel({ initial, onClose, onSave }) {
   );
 }
 
+function Onboarding({ onComplete }) {
+  const [step, setStep] = useState(0);
+  const [type, setType] = useState("chatting");
+  const [name, setName] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [symbol, setSymbol] = useState("$");
+  const [accent, setAccent] = useState("#5EEAD4");
+  const [terms, setTerms] = useState(AGENCY_PRESETS.chatting.terms);
+  const [agPct, setAgPct] = useState(AGENCY_PRESETS.chatting.commission.agencyShare * 100);
+  const [stPct, setStPct] = useState(AGENCY_PRESETS.chatting.commission.staffShare * 100);
+  const preset = AGENCY_PRESETS[type];
+
+  const pickType = (k) => {
+    setType(k);
+    const p = AGENCY_PRESETS[k];
+    setTerms(JSON.parse(JSON.stringify(p.terms)));
+    setAgPct(p.commission.agencyShare * 100);
+    setStPct(p.commission.staffShare * 100);
+  };
+  const setTerm = (grp, sub, v) => setTerms((s) => ({ ...s, [grp]: { ...s[grp], [sub]: v } }));
+
+  const finish = () => {
+    const base = JSON.parse(JSON.stringify(defaultConfig));
+    base.business.name = name.trim() || preset.label;
+    base.business.tagline = preset.tagline;
+    base.business.logo = "";
+    base.business.address = [];
+    base.locale.currency = (currency.trim().toUpperCase()) || "USD";
+    base.locale.currencySymbol = symbol || "$";
+    base.branding.accent = accent;
+    base.branding.accent2 = darken(accent, 0.12);
+    base.branding.accent3 = darken(accent, 0.22);
+    base.terms = terms;
+    base.commission.defaults = { agencyShare: (Number(agPct) || 0) / 100, staffShare: (Number(stPct) || 0) / 100 };
+    base.invoice.lineItemLabel = preset.lineItemLabel;
+    base.onboarded = true;
+    onComplete(base);
+  };
+
+  const canNext = step === 0 ? !!type : step === 1 ? name.trim().length > 0 : true;
+  const half = { flex: "1 1 150px", minWidth: 130 };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 2200, background: "var(--bg)",
+      backgroundImage: "radial-gradient(900px 520px at 50% -10%, rgba(var(--accent-rgb),0.16), transparent 60%), radial-gradient(700px 600px at 50% 120%, rgba(167,139,250,0.10), transparent 55%)",
+      overflowY: "auto", animation: "fadeIn 0.25s ease",
+    }}>
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "44px 22px 90px", minHeight: "100%" }}>
+        {/* brand mark */}
+        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 30 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b", fontWeight: 800, fontSize: 20 }}>
+            {(name || "A").charAt(0).toUpperCase()}
+          </div>
+          <div style={{ fontSize: 13, color: C.textDim, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1 }}>SET UP YOUR WORKSPACE</div>
+        </div>
+
+        {/* progress dots */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 26 }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} style={{ height: 4, flex: 1, borderRadius: 99, background: i <= step ? "var(--accent)" : "rgba(255,255,255,0.08)", transition: "background .3s" }} />
+          ))}
+        </div>
+
+        {step === 0 && (
+          <div className="rise">
+            <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 6 }}>What kind of agency do you run?</h2>
+            <p style={{ fontSize: 13.5, color: C.textDim, marginBottom: 22 }}>This sets your wording and starting commission — you can change anything later.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {Object.entries(AGENCY_PRESETS).map(([k, p]) => (
+                <button key={k} onClick={() => pickType(k)} style={{
+                  textAlign: "left", padding: "18px 18px", borderRadius: 14, cursor: "pointer",
+                  background: type === k ? "var(--accent-dim)" : C.card,
+                  border: "1px solid " + (type === k ? "var(--accent-border)" : C.cardBorder),
+                  transition: "all .2s", color: "#fff",
+                }}>
+                  <div style={{ fontSize: 26, marginBottom: 8 }}>{p.icon}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>{p.label}</div>
+                  <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 3 }}>{p.terms.staff.many} · {p.terms.revenue.many}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="rise">
+            <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 6 }}>Tell us about your agency</h2>
+            <p style={{ fontSize: 13.5, color: C.textDim, marginBottom: 22 }}>Just the basics to brand your workspace.</p>
+            <Field label="Agency name"><input style={inpStyle} value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="e.g. Acme Studio" /></Field>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={half}><Field label="Currency code"><input style={inpStyle} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} placeholder="USD" /></Field></div>
+              <div style={half}><Field label="Symbol"><input style={inpStyle} value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="$" /></Field></div>
+            </div>
+            <Field label="Brand color">
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)} style={{ width: 48, height: 38, padding: 0, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9, background: "none", cursor: "pointer" }} />
+                <input style={{ ...inpStyle, fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase" }} value={accent} onChange={(e) => setAccent(e.target.value)} />
+              </div>
+            </Field>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="rise">
+            <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 6 }}>Confirm your wording</h2>
+            <p style={{ fontSize: 13.5, color: C.textDim, marginBottom: 22 }}>These labels appear throughout the app. Tweak if you like.</p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={half}><Field label="You call clients"><input style={inpStyle} value={terms.client.many} onChange={(e) => setTerm("client", "many", e.target.value)} /></Field></div>
+              <div style={half}><Field label="You call staff"><input style={inpStyle} value={terms.staff.many} onChange={(e) => setTerm("staff", "many", e.target.value)} /></Field></div>
+            </div>
+            <Field label="You call revenue items"><input style={inpStyle} value={terms.revenue.many} onChange={(e) => setTerm("revenue", "many", e.target.value)} /></Field>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={half}><Field label={`${terms.agencyShareLabel} (%)`}><input type="number" step="0.1" style={inpStyle} value={agPct} onChange={(e) => setAgPct(e.target.value)} /></Field></div>
+              <div style={half}><Field label={`${terms.staffShareLabel} (%)`}><input type="number" step="0.1" style={inpStyle} value={stPct} onChange={(e) => setStPct(e.target.value)} /></Field></div>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 2 }}>Default split used when you add a new {terms.client.one.toLowerCase()} — editable per {terms.client.one.toLowerCase()}.</div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 30 }}>
+          <Btn variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} style={{ visibility: step === 0 ? "hidden" : "visible" }}>← Back</Btn>
+          {step < 2
+            ? <Btn onClick={() => setStep((s) => s + 1)} disabled={!canNext}>Continue →</Btn>
+            : <Btn onClick={finish}>Enter dashboard →</Btn>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [data, setData] = useState(defaultState);
   const config = data.config || defaultConfig;
   setActiveCurrency(config.locale);
   const t = config.terms;
+  const needsOnboarding = !config.onboarded
+    && data.clients.length === 0 && data.chatters.length === 0 && data.records.length === 0;
 
   // Reflect the agency name in the browser tab.
   useEffect(() => {
@@ -971,6 +1129,14 @@ function App() {
   const [chatterClientId, setChatterClientId] = useState("");
   const [editingClient, setEditingClient] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  // When the Add-Client modal opens, seed the cut fields from the agency's configured defaults.
+  useEffect(() => {
+    if (addClientOpen) {
+      setNewClientAgencyCut(((config.commission?.defaults?.agencyShare ?? AGENCY_CUT) * 100));
+      setNewClientChatterCut(((config.commission?.defaults?.staffShare ?? CHATTER_CUT) * 100));
+    }
+  }, [addClientOpen]);
 
   // Forms
   const [newClientName, setNewClientName] = useState("");
@@ -2204,6 +2370,8 @@ function App() {
       </Modal>
 
       {shareCard && <ShareCard {...shareCard} onClose={() => setShareCard(null)} />}
+      {!loading && needsOnboarding && <Onboarding onComplete={saveConfig} />}
+
       {settingsOpen && <SettingsPanel initial={config} onClose={() => setSettingsOpen(false)} onSave={saveConfig} />}
 
       {invoiceView && <InvoiceView {...invoiceView} onClose={() => setInvoiceView(null)} />}
