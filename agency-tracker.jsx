@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from "react";
 
 const STORAGE_KEY = "fanlink-tracker-v4";
 const defaultState = { clients: [], chatters: [], records: [] };
@@ -94,6 +94,10 @@ const mergeConfig = (saved) => {
   }
   return base;
 };
+
+// Any component can read the active agency config via useConfig().
+const ConfigContext = createContext(defaultConfig);
+const useConfig = () => useContext(ConfigContext);
 const LOGO = "/logo.svg";
 
 const toWords = (num) => {
@@ -728,6 +732,11 @@ function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDone
 function App() {
   const [data, setData] = useState(defaultState);
   const config = data.config || defaultConfig;
+
+  // Reflect the agency name in the browser tab.
+  useEffect(() => {
+    if (typeof document !== "undefined") document.title = config.business.name;
+  }, [config.business.name]);
   const [tab, setTab] = useState("Dashboard");
   const [loading, setLoading] = useState(true);
 
@@ -1183,6 +1192,7 @@ function App() {
   useEffect(() => { if (ready) { const t = setTimeout(() => setLoaderGone(true), 520); return () => clearTimeout(t); } }, [ready]);
 
   return (
+    <ConfigContext.Provider value={config}>
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "#fff", fontFamily: "'Outfit',sans-serif" }}>
 
       <style>
@@ -2104,6 +2114,7 @@ function App() {
         </div>
       </Modal>
     </div >
+    </ConfigContext.Provider>
   );
 }
 
