@@ -344,6 +344,7 @@ function StatCard({ label, amount, accent, gradient, delay = 0 }) {
 }
 
 function RevenueTrend({ records, delay = 0 }) {
+  const { terms } = useConfig();
   const series = useMemo(() => {
     const byDate = {};
     records.forEach((r) => { byDate[r.date] = (byDate[r.date] || 0) + r.amount; });
@@ -396,7 +397,7 @@ function RevenueTrend({ records, delay = 0 }) {
         <div>
           <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.4, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>Revenue trend</div>
           <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>
-            {series.length === 0 ? "No sales recorded yet" : `Across ${series.length} active ${series.length === 1 ? "day" : "days"}`}
+            {series.length === 0 ? `No ${terms.revenue.many.toLowerCase()} recorded yet` : `Across ${series.length} active ${series.length === 1 ? "day" : "days"}`}
           </div>
         </div>
         {geom && <div style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(geom.total)}</div>}
@@ -424,7 +425,7 @@ function RevenueTrend({ records, delay = 0 }) {
         </svg>
       ) : (
         <div style={{ height: H, display: "flex", alignItems: "center", justifyContent: "center", color: C.textMuted, fontSize: 13 }}>
-          Your revenue trend will appear here once you log sales.
+          {`Your revenue trend will appear here once you log ${terms.revenue.many.toLowerCase()}.`}
         </div>
       )}
     </div>
@@ -524,20 +525,26 @@ function Avatar({ name, size }) {
 }
 
 function TabBar({ active, onChange }) {
-  const tabs = ["Dashboard", "Add Sales", "Clients", "History"];
+  const { terms } = useConfig();
+  const tabs = [
+    { key: "Dashboard", label: "Dashboard" },
+    { key: "Add Sales", label: "Add " + terms.revenue.one },
+    { key: "Clients", label: terms.client.many },
+    { key: "History", label: "History" },
+  ];
   return (
     <div className="no-print" style={{
       display: "flex", gap: 10, marginBottom: 28, borderBottom: "1px solid var(--card-border)",
       paddingBottom: 12, overflowX: "auto",
     }}>
       {tabs.map((t) => (
-        <button key={t} onClick={() => onChange(t)} style={{
-          background: active === t ? "var(--accent-dim)" : "transparent",
-          border: "1px solid " + (active === t ? "var(--accent-border)" : "transparent"),
-          padding: "8px 16px", borderRadius: 10, color: active === t ? "var(--accent)" : "var(--text-dim)",
+        <button key={t.key} onClick={() => onChange(t.key)} style={{
+          background: active === t.key ? "var(--accent-dim)" : "transparent",
+          border: "1px solid " + (active === t.key ? "var(--accent-border)" : "transparent"),
+          padding: "8px 16px", borderRadius: 10, color: active === t.key ? "var(--accent)" : "var(--text-dim)",
           cursor: "pointer", fontSize: 14, fontWeight: 600, transition: "all 0.2s",
           whiteSpace: "nowrap",
-        }}>{t}</button>
+        }}>{t.label}</button>
       ))}
     </div>
   );
@@ -751,6 +758,7 @@ function App() {
   const [data, setData] = useState(defaultState);
   const config = data.config || defaultConfig;
   setActiveCurrency(config.locale);
+  const t = config.terms;
 
   // Reflect the agency name in the browser tab.
   useEffect(() => {
@@ -1088,7 +1096,7 @@ function App() {
       const s = String(v ?? "");
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
-    const headers = ["Chatter", "Client", "Date", "Total Amount", "Agency Cut", "Chatter Pay"];
+    const headers = [t.staff.one, t.client.one, "Date", "Total Amount", t.agencyShareLabel, t.staffShareLabel];
     const rows = recs.map((r) => [chatterNameFn(r.chatterId), clientNameFn(chatterClientFn(r.chatterId)), r.date, r.amount, r.agencyCut, r.chatterCut]);
     const csv = [headers, ...rows].map((r) => r.map(esc).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1143,8 +1151,8 @@ function App() {
     ? [...new Set(data.clients.map((cl) => cl.chatterCut !== undefined ? cl.chatterCut : CHATTER_CUT))]
     : [CHATTER_CUT];
 
-  const agencyCutLabel = uniqueAgCuts.length === 1 ? `Your Cut · ${(uniqueAgCuts[0] * 100).toFixed(1)}%` : "Your Cut";
-  const chatterCutLabel = uniqueChCuts.length === 1 ? `Chatter Pay · ${(uniqueChCuts[0] * 100).toFixed(1)}%` : "Chatter Pay";
+  const agencyCutLabel = uniqueAgCuts.length === 1 ? `${t.agencyShareLabel} · ${(uniqueAgCuts[0] * 100).toFixed(1)}%` : t.agencyShareLabel;
+  const chatterCutLabel = uniqueChCuts.length === 1 ? `${t.staffShareLabel} · ${(uniqueChCuts[0] * 100).toFixed(1)}%` : t.staffShareLabel;
 
   const clientStats = data.clients.map((cl) => {
     const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && data.chatters.find((c) => c.id === r.chatterId)?.clientId === cl.id);
@@ -1187,8 +1195,8 @@ function App() {
   const uniqueBatchAgCuts = [...new Set(batchCuts.map((c) => c.ag))];
   const uniqueBatchChCuts = [...new Set(batchCuts.map((c) => c.ch))];
 
-  const batchAgLabel = uniqueBatchAgCuts.length === 1 ? `Your cut (${(uniqueBatchAgCuts[0] * 100).toFixed(1)}%)` : "Your cut";
-  const batchChLabel = uniqueBatchChCuts.length === 1 ? `Chatter pay (${(uniqueBatchChCuts[0] * 100).toFixed(1)}%)` : "Chatter pay";
+  const batchAgLabel = uniqueBatchAgCuts.length === 1 ? `${t.agencyShareLabel} (${(uniqueBatchAgCuts[0] * 100).toFixed(1)}%)` : t.agencyShareLabel;
+  const batchChLabel = uniqueBatchChCuts.length === 1 ? `${t.staffShareLabel} (${(uniqueBatchChCuts[0] * 100).toFixed(1)}%)` : t.staffShareLabel;
 
   const filteredRecords = data.records.filter((r) => {
     const chatter = data.chatters.find((c) => c.id === r.chatterId);
@@ -1401,7 +1409,7 @@ function App() {
             </div>
 
             <div className="mobile-grid" style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
-              <StatCard label="Total Sales" amount={totalSales} accent="var(--accent-glow)" gradient delay={0} />
+              <StatCard label={`Total ${t.revenue.many}`} amount={totalSales} accent="var(--accent-glow)" gradient delay={0} />
               <StatCard label={agencyCutLabel} amount={totalAgency} accent="rgba(94,234,212,0.08)" delay={70} />
               <StatCard label={chatterCutLabel} amount={totalChatterPay} accent="rgba(167,139,250,0.10)" delay={140} />
             </div>
@@ -1410,9 +1418,9 @@ function App() {
 
             {totalSales > 0 && <SplitRing total={totalSales} agency={totalAgency} chatter={totalChatterPay} delay={220} />}
 
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-dim)", marginBottom: 14, letterSpacing: 0.5 }}>By Client</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-dim)", marginBottom: 14, letterSpacing: 0.5 }}>By {t.client.one}</h3>
             {clientStats.length === 0 ? (
-              <EmptyState icon="📌" text="No clients yet" sub="Add clients in the Clients tab" action={<Btn variant="secondary" onClick={() => setTab("Clients")}>Go to Clients →</Btn>} />
+              <EmptyState icon="📌" text={`No ${t.client.many.toLowerCase()} yet`} sub={`Add ${t.client.many.toLowerCase()} in the ${t.client.many} tab`} action={<Btn variant="secondary" onClick={() => setTab("Clients")}>Go to {t.client.many} →</Btn>} />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {clientStats.sort((a, b) => b.total - a.total).map((cl) => {
@@ -1500,7 +1508,7 @@ function App() {
           <div style={{ animation: "slideUp 0.3s ease" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
               <div style={{ flex: "1 1 200px" }}>
-                <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 3 }}>Record Sales</h2>
+                <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 3 }}>Record {t.revenue.many}</h2>
                 <p style={{ color: C.textDim, fontSize: 13 }}>Type amount → Enter adds more. Enter on empty → next chatter.</p>
               </div>
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", flex: "1 1 auto", justifyContent: "flex-end" }} className="mobile-stack">
@@ -1521,7 +1529,7 @@ function App() {
                 <Field label="Client">
                   <select value={salesClientId} aria-label="Select client for sales entry" onChange={(e) => setSalesClientId(e.target.value)} style={{ ...inpStyle, width: 170, cursor: "pointer", background: "var(--surface)" }}>
                     <option value="">Select Client...</option>
-                    <option value="all">All Clients</option>
+                    <option value="all">All {t.client.many}</option>
                     {data.clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
                   </select>
                 </Field>
@@ -1532,7 +1540,7 @@ function App() {
             </div>
 
             {salesChatters.length === 0 ? (
-              <EmptyState icon="💬" text={!salesClientId ? "Select a client to record sales" : (salesClientId === "all" ? "No chatters yet" : "No chatters for this client")} sub={!salesClientId ? "Choose a client from the dropdown above" : "Add chatters in the Clients tab"} action={!salesClientId ? null : <Btn variant="secondary" onClick={() => setTab("Clients")}>Go to Clients →</Btn>} />
+              <EmptyState icon="💬" text={!salesClientId ? `Select a ${t.client.one.toLowerCase()} to record ${t.revenue.many.toLowerCase()}` : (salesClientId === "all" ? `No ${t.staff.many.toLowerCase()} yet` : `No ${t.staff.many.toLowerCase()} for this ${t.client.one.toLowerCase()}`)} sub={!salesClientId ? `Choose a ${t.client.one.toLowerCase()} from the dropdown above` : `Add ${t.staff.many.toLowerCase()} in the ${t.client.many} tab`} action={!salesClientId ? null : <Btn variant="secondary" onClick={() => setTab("Clients")}>Go to {t.client.many} →</Btn>} />
             ) : (
               <div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 22 }}>
@@ -1656,7 +1664,7 @@ function App() {
                           const chCut = cl?.chatterCut !== undefined ? cl.chatterCut : CHATTER_CUT;
                           return { name: c.name, chatterCut: chatterSum(c.id) * chCut, chatterCutPercent: chCut };
                         });
-                        if (allCh.length) setShareCard({ chatters: allCh, clientNameStr: salesClientId === "all" ? "All Clients" : clientNameFn(salesClientId), date: shortDate(salesDate) });
+                        if (allCh.length) setShareCard({ chatters: allCh, clientNameStr: salesClientId === "all" ? `All ${t.client.many}` : clientNameFn(salesClientId), date: shortDate(salesDate) });
                       }} style={{
                         background: "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
                         border: "none", borderRadius: 7, color: "#04231b", padding: "6px 14px",
@@ -1680,11 +1688,11 @@ function App() {
                 )}
 
                 <Btn onClick={saveBulkSales} disabled={!bulkHas} style={{ width: "100%" }}>
-                  {savedFlash ? "✓ Saved!" : "Save All Sales"}
+                  {savedFlash ? "✓ Saved!" : `Save All `}
                 </Btn>
                 {savedFlash && (
                   <div style={{ textAlign: "center", marginTop: 10, color: C.accent, fontSize: 13, fontWeight: 500, animation: "fadeIn 0.3s ease" }}>
-                    Sales recorded for {shortDate(salesDate)}
+                    {t.revenue.many} recorded for {shortDate(salesDate)}
                   </div>
                 )}
               </div>
@@ -1697,14 +1705,14 @@ function App() {
           <div style={{ animation: "slideUp 0.3s ease" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
               <div>
-                <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 3 }}>Clients & Chatters</h2>
+                <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 3 }}>{t.client.many} & {t.staff.many}</h2>
                 <p style={{ color: C.textDim, fontSize: 13 }}>Manage your clients and assign chatters.</p>
               </div>
-              <Btn onClick={() => setAddClientOpen(true)}>+ Add Client</Btn>
+              <Btn onClick={() => setAddClientOpen(true)}>+ Add {t.client.one}</Btn>
             </div>
 
             {data.clients.length === 0 ? (
-              <EmptyState icon="📌" text="No clients yet" sub={'Click "Add Client" to get started'} />
+              <EmptyState icon="📌" text={`No ${t.client.many.toLowerCase()} yet`} sub={`Click "Add ${t.client.one}" to get started`} />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {data.clients.map((cl, i) => {
@@ -1725,7 +1733,7 @@ function App() {
                             borderRadius: 8, color: C.textDim, padding: "7px 12px", cursor: "pointer",
                             fontSize: 11, fontWeight: 600, fontFamily: "'Outfit',sans-serif",
                           }}>⚙️ Settings</button>
-                          <Btn variant="secondary" onClick={() => { setChatterClientId(cl.id); setAddChatterOpen(true); }} style={{ padding: "7px 14px", fontSize: 12 }}>+ Chatter</Btn>
+                          <Btn variant="secondary" onClick={() => { setChatterClientId(cl.id); setAddChatterOpen(true); }} style={{ padding: "7px 14px", fontSize: 12 }}>+ {t.staff.one}</Btn>
                           <button onClick={() => setDeleteConfirm({ type: "client", id: cl.id })} style={{
                             background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)",
                             borderRadius: 8, color: "#ef4444", padding: "7px 12px", cursor: "pointer",
@@ -1805,7 +1813,7 @@ function App() {
             }}>
               <Field label="Client">
                 <select value={filterClient} aria-label="Filter by client" onChange={(e) => { setFilterClient(e.target.value); setFilterChatter("all"); }} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
-                  <option value="all">All Clients</option>
+                  <option value="all">All {t.client.many}</option>
                   {data.clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
                 </select>
               </Field>
@@ -1837,7 +1845,7 @@ function App() {
                     <div style={{ fontSize: 18, fontWeight: 700, color: C.accent2 }}>{fmt(filteredRecords.reduce((s, r) => s + r.agencyCut, 0))}</div>
                   </div>
                   <div style={{ background: "rgba(167,139,250,0.06)", borderRadius: 11, padding: "12px 18px", flex: "1 1 130px" }}>
-                    <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4, marginBottom: 3 }}>CHATTER PAY</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4, marginBottom: 3 }}>{t.staffShareLabel.toUpperCase()}</div>
                     <div style={{ fontSize: 18, fontWeight: 700, color: C.violet }}>{fmt(filteredRecords.reduce((s, r) => s + r.chatterCut, 0))}</div>
                   </div>
                 </div>
@@ -1853,7 +1861,7 @@ function App() {
                     fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace",
                     letterSpacing: 0.7, textTransform: "uppercase", gap: 6,
                   }}>
-                    <div>Chatter</div><div>Client</div><div>Date</div><div>Amount</div><div>You</div><div>Them</div><div>Actions</div>
+                    <div>{t.staff.one}</div><div>{t.client.one}</div><div>Date</div><div>Amount</div><div>You</div><div>Them</div><div>Actions</div>
                   </div>
                   {filteredRecords.map((r) => (
                     <div key={r.id} className="recrow" style={{
@@ -1887,20 +1895,20 @@ function App() {
       </div>
 
       {/* ── MODALS ── */}
-      <Modal open={addClientOpen} onClose={() => setAddClientOpen(false)} title="Add Client">
-        <Field label="Client Name">
-          <input type="text" placeholder="Enter client name..." value={newClientName}
+      <Modal open={addClientOpen} onClose={() => setAddClientOpen(false)} title={`Add ${t.client.one}`}>
+        <Field label={`${t.client.one} Name`}>
+          <input type="text" placeholder={`Enter ${t.client.one.toLowerCase()} name...`} value={newClientName}
             onChange={(e) => setNewClientName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addClient(); }}
             style={inpStyle} />
         </Field>
         <div style={{ display: "flex", gap: 12 }}>
-          <Field label="Agency Cut (%)">
+          <Field label={`${t.agencyShareLabel} (%)`}>
             <input type="number" step="0.1" value={newClientAgencyCut}
               onChange={(e) => setNewClientAgencyCut(e.target.value)}
               style={inpStyle} />
           </Field>
-          <Field label="Chatter Pay (%)">
+          <Field label={`${t.staffShareLabel} (%)`}>
             <input type="number" step="0.1" value={newClientChatterCut}
               onChange={(e) => setNewClientChatterCut(e.target.value)}
               style={inpStyle} />
@@ -1908,19 +1916,19 @@ function App() {
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
           <Btn variant="secondary" onClick={() => setAddClientOpen(false)}>Cancel</Btn>
-          <Btn onClick={addClient} disabled={!newClientName.trim()}>Add Client</Btn>
+          <Btn onClick={addClient} disabled={!newClientName.trim()}>Add {t.client.one}</Btn>
         </div>
       </Modal>
 
-      <Modal open={addChatterOpen} onClose={() => setAddChatterOpen(false)} title="Add Chatter">
-        <Field label="Client">
+      <Modal open={addChatterOpen} onClose={() => setAddChatterOpen(false)} title={`Add ${t.staff.one}`}>
+        <Field label={t.client.one}>
           <select value={chatterClientId} onChange={(e) => setChatterClientId(e.target.value)}
             style={{ ...inpStyle, cursor: "pointer", background: "#151916" }}>
-            <option value="">Select client...</option>
+            <option value="">Select {t.client.one.toLowerCase()}...</option>
             {data.clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
           </select>
         </Field>
-        <Field label="Chatter Name">
+        <Field label={`${t.staff.one} Name`}>
           <input type="text" placeholder="Enter name..." value={newChatterName}
             onChange={(e) => setNewChatterName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addChatter(); }}
@@ -1928,21 +1936,21 @@ function App() {
         </Field>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
           <Btn variant="secondary" onClick={() => setAddChatterOpen(false)}>Cancel</Btn>
-          <Btn onClick={addChatter} disabled={!newChatterName.trim() || !chatterClientId}>Add Chatter</Btn>
+          <Btn onClick={addChatter} disabled={!newChatterName.trim() || !chatterClientId}>Add {t.staff.one}</Btn>
         </div>
       </Modal>
 
-      <Modal open={!!editingClient} onClose={() => setEditingClient(null)} title="Client Settings">
+      <Modal open={!!editingClient} onClose={() => setEditingClient(null)} title={`${t.client.one} Settings`}>
         {editingClient && (
           <div>
             <p style={{ fontSize: 13, color: C.textDim, marginBottom: 18 }}>Update paycut percentages for <strong>{editingClient.name}</strong>.</p>
             <div style={{ display: "flex", gap: 12 }}>
-              <Field label="Agency Cut (%)">
+              <Field label={`${t.agencyShareLabel} (%)`}>
                 <input type="number" step="0.1" min="0" max="100" value={editAgCut}
                   onChange={(e) => setEditAgCut(e.target.value)}
                   aria-label="Agency cut percent" style={inpStyle} />
               </Field>
-              <Field label="Chatter Pay (%)">
+              <Field label={`${t.staffShareLabel} (%)`}>
                 <input type="number" step="0.1" min="0" max="100" value={editChCut}
                   onChange={(e) => setEditChCut(e.target.value)}
                   aria-label="Chatter pay percent" style={inpStyle} />
@@ -2050,7 +2058,7 @@ function App() {
         </div>
       )}
 
-      <Modal open={smartPasteOpen} onClose={() => setSmartPasteOpen(false)} title="✨ Smart Paste Sales">
+      <Modal open={smartPasteOpen} onClose={() => setSmartPasteOpen(false)} title={`✨ Smart Paste `}>
         <p style={{ fontSize: 13, color: C.textDim, marginBottom: 12, lineHeight: 1.5 }}>
           Paste raw reports or chat logs here. We'll automatically find chatter names and their sales.
         </p>
@@ -2061,7 +2069,7 @@ function App() {
             display: "flex", alignItems: "center", gap: 8
           }}>
             <span>⚠️</span>
-            <span>Please select a client in the "Record Sales" tab first.</span>
+            <span>Please select a {t.client.one.toLowerCase()} in the "Record {t.revenue.many}" tab first.</span>
           </div>
         )}
         <textarea
