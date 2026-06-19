@@ -63,7 +63,7 @@ errors with a missing rollup module, run `npm install @rollup/rollup-linux-x64-g
 - [x] Step 3 — Wire config through app via context (plumbing, no visible change).
 - [x] Step 4 — Locale-aware currency + amount-in-words.
 - [x] Step 5 — Terminology pass (config-driven labels; keep internal keys).
-- [ ] Step 6 — Branding pass (name/logo/accent from config).
+- [x] Step 6 — Branding pass (name/logo/accent from config).
 - [ ] Step 7 — De-hardcode invoice (address, tax line, number format, notes).
 - [ ] Step 8 — Flexible commission engine (%, flat, tiered) — the core, do carefully.
 - [ ] Step 9 — Settings screen to edit all of the above.

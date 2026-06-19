@@ -84,6 +84,8 @@ const defaultConfig = {
   },
   branding: {
     accent: "#5EEAD4",
+    accent2: "#34D399",
+    accent3: "#2DD4BF",
   },
   invoice: {
     title: "Customer Invoices",
@@ -118,6 +120,14 @@ const ConfigContext = createContext(defaultConfig);
 const useConfig = () => useContext(ConfigContext);
 const LOGO = "/logo.svg";
 
+// "#5EEAD4" -> "94, 234, 212"  (for rgba(var(--accent-rgb), a) glows)
+const hexToRgb = (hex) => {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || "").trim());
+  if (!m) return "94, 234, 212";
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+};
+
 const toWords = (num) => {
   const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
   const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
@@ -143,9 +153,9 @@ const THEME = {
   accent: "#5EEAD4",
   accent2: "#34D399",
   accent3: "#2DD4BF",
-  accentGlow: "rgba(94,234,212,0.14)",
-  accentDim: "rgba(94,234,212,0.08)",
-  accentBorder: "rgba(94,234,212,0.16)",
+  accentGlow: "rgba(var(--accent-rgb),0.14)",
+  accentDim: "rgba(var(--accent-rgb),0.08)",
+  accentBorder: "rgba(var(--accent-rgb),0.16)",
   textDim: "rgba(234,242,238,0.55)",
   textMuted: "rgba(234,242,238,0.30)",
   earn: "#FBBF24",
@@ -295,9 +305,9 @@ function Btn({ children, onClick, disabled, variant, style: s }) {
   const isPrimary = variant !== "secondary";
   const base = isPrimary
     ? {
-      background: disabled ? "rgba(94,234,212,0.15)" : "linear-gradient(135deg, var(--accent), var(--accent2))",
+      background: disabled ? "rgba(var(--accent-rgb),0.15)" : "linear-gradient(135deg, var(--accent), var(--accent2))",
       color: "#04231b",
-      boxShadow: disabled ? "none" : "0 6px 26px rgba(94,234,212,0.28), inset 0 1px 0 rgba(255,255,255,0.4)",
+      boxShadow: disabled ? "none" : "0 6px 26px rgba(var(--accent-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.4)",
     }
     : {
       background: "rgba(255,255,255,0.04)",
@@ -392,7 +402,7 @@ function RevenueTrend({ records, delay = 0 }) {
       boxShadow: "0 18px 44px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.05)",
     }}>
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none",
-        background: "radial-gradient(420px 200px at 6% -30%, rgba(94,234,212,0.12), transparent 70%)" }} />
+        background: "radial-gradient(420px 200px at 6% -30%, rgba(var(--accent-rgb),0.12), transparent 70%)" }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", position: "relative", zIndex: 1 }}>
         <div>
           <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.4, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>Revenue trend</div>
@@ -407,18 +417,18 @@ function RevenueTrend({ records, delay = 0 }) {
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H} style={{ marginTop: 6, display: "block" }} aria-label="Revenue trend line chart">
           <defs>
             <linearGradient id="rtfill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#34D399" stopOpacity="0.34" />
-              <stop offset="100%" stopColor="#34D399" stopOpacity="0" />
+              <stop offset="0%" stopColor="var(--accent2)" stopOpacity="0.34" />
+              <stop offset="100%" stopColor="var(--accent2)" stopOpacity="0" />
             </linearGradient>
             <linearGradient id="rtstroke" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#34D399" />
-              <stop offset="100%" stopColor="#5EEAD4" />
+              <stop offset="0%" stopColor="var(--accent2)" />
+              <stop offset="100%" stopColor="var(--accent)" />
             </linearGradient>
           </defs>
           <path d={geom.fill} fill="url(#rtfill)" />
           <path ref={lineRef} d={geom.line} fill="none" stroke="url(#rtstroke)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill="#5EEAD4" />
-          <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill="#5EEAD4" opacity="0.4">
+          <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill="var(--accent)" />
+          <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill="var(--accent)" opacity="0.4">
             <animate attributeName="r" values="4.5;11;4.5" dur="2.2s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.4;0;0.4" dur="2.2s" repeatCount="indefinite" />
           </circle>
@@ -439,7 +449,7 @@ function SplitRing({ total, agency, chatter, delay = 0 }) {
   const segs = [
     { key: "creator", label: "Creators kept", val: creator, color: "#FBBF24" },
     { key: "chatter", label: "Chatters", val: chatter, color: "#A78BFA" },
-    { key: "agency", label: "Agency (you)", val: agency, color: "#34D399" },
+    { key: "agency", label: "Agency (you)", val: agency, color: "var(--accent2)" },
   ];
   const [shown, setShown] = useState(false);
   useEffect(() => { const t = setTimeout(() => setShown(true), 120 + delay); return () => clearTimeout(t); }, [delay]);
@@ -563,15 +573,15 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose }) {
       <div style={{
         background: "linear-gradient(160deg,#0d1a10,#0a1a0d 40%,#0f2213)",
         borderRadius: 18, padding: "26px 28px", marginBottom: 18,
-        border: "1px solid rgba(94,234,212,0.12)", position: "relative", overflow: "hidden",
+        border: "1px solid rgba(var(--accent-rgb),0.12)", position: "relative", overflow: "hidden",
       }}>
         <div style={{
           position: "absolute", top: -30, right: -30, width: 120, height: 120,
-          borderRadius: "50%", background: "rgba(94,234,212,0.06)", filter: "blur(30px)",
+          borderRadius: "50%", background: "rgba(var(--accent-rgb),0.06)", filter: "blur(30px)",
         }} />
         <div style={{
           position: "absolute", bottom: -20, left: -20, width: 80, height: 80,
-          borderRadius: "50%", background: "rgba(94,234,212,0.04)", filter: "blur(20px)",
+          borderRadius: "50%", background: "rgba(var(--accent-rgb),0.04)", filter: "blur(20px)",
         }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
@@ -620,7 +630,7 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose }) {
             </div>
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "12px 14px", background: "rgba(94,234,212,0.05)", borderRadius: 10,
+              padding: "12px 14px", background: "rgba(var(--accent-rgb),0.05)", borderRadius: 10,
               border: "1px solid " + C.accentBorder,
             }}>
               <span style={{ fontWeight: 600, fontSize: 13, color: C.textDim }}>Total Payouts</span>
@@ -1226,12 +1236,13 @@ function App() {
         {`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
         :root {
-          --accent: ${THEME.accent};
-          --accent2: ${THEME.accent2};
-          --accent3: ${THEME.accent3};
-          --accent-glow: ${THEME.accentGlow};
-          --accent-dim: ${THEME.accentDim};
-          --accent-border: ${THEME.accentBorder};
+          --accent: ${config.branding.accent};
+          --accent2: ${config.branding.accent2};
+          --accent3: ${config.branding.accent3};
+          --accent-rgb: ${hexToRgb(config.branding.accent)};
+          --accent-glow: rgba(${hexToRgb(config.branding.accent)}, 0.14);
+          --accent-dim: rgba(${hexToRgb(config.branding.accent)}, 0.08);
+          --accent-border: rgba(${hexToRgb(config.branding.accent)}, 0.16);
           --bg: ${THEME.bg};
           --card-bg: ${THEME.card};
           --card-border: ${THEME.cardBorder};
@@ -1249,7 +1260,7 @@ function App() {
           background-image:
             radial-gradient(900px 520px at 10% -10%, rgba(52,211,153,0.13), transparent 60%),
             radial-gradient(820px 560px at 105% 12%, rgba(167,139,250,0.10), transparent 55%),
-            radial-gradient(760px 700px at 50% 118%, rgba(94,234,212,0.05), transparent 60%);
+            radial-gradient(760px 700px at 50% 118%, rgba(var(--accent-rgb),0.05), transparent 60%);
           background-attachment: fixed;
           min-height: 100vh; font-family: 'Outfit', sans-serif; color: #fff;
         }
@@ -1260,20 +1271,20 @@ function App() {
         @keyframes shimmer { 100% { transform: translateX(100%); } }
         @keyframes auroraSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes ringGrow { from { stroke-dashoffset: var(--circ); } }
-        @keyframes loaderGlow { 0%,100% { box-shadow: 0 10px 40px rgba(52,211,153,0.35), inset 0 1px 0 rgba(255,255,255,0.5); } 50% { box-shadow: 0 14px 60px rgba(94,234,212,0.6), inset 0 1px 0 rgba(255,255,255,0.6); } }
+        @keyframes loaderGlow { 0%,100% { box-shadow: 0 10px 40px rgba(52,211,153,0.35), inset 0 1px 0 rgba(255,255,255,0.5); } 50% { box-shadow: 0 14px 60px rgba(var(--accent-rgb),0.6), inset 0 1px 0 rgba(255,255,255,0.6); } }
         @keyframes loaderFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
         @keyframes barSweep { 0% { left: -40%; } 100% { left: 100%; } }
         @keyframes spinIn { from { transform: rotate(-120deg) scale(0.6); opacity: 0; } to { transform: rotate(0) scale(1); opacity: 1; } }
         .rise { opacity: 0; animation: riseIn 0.55s cubic-bezier(.2,.8,.2,1) forwards; }
         .lift { transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .28s ease; }
         .lift:hover { transform: translateY(-3px); box-shadow: 0 22px 46px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.08); border-color: var(--accent-border); }
-        .btnp:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(94,234,212,0.42), inset 0 1px 0 rgba(255,255,255,0.5); filter: brightness(1.04); }
+        .btnp:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(var(--accent-rgb),0.42), inset 0 1px 0 rgba(255,255,255,0.5); filter: brightness(1.04); }
         .btnp:active:not(:disabled) { transform: translateY(0); }
         .btns:hover:not(:disabled) { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.85); }
         .chrow { transition: background .2s ease, border-color .2s ease; }
-        .chrow:hover { background: rgba(94,234,212,0.05) !important; border-color: var(--accent-border) !important; }
+        .chrow:hover { background: rgba(var(--accent-rgb),0.05) !important; border-color: var(--accent-border) !important; }
         .recrow { transition: background .18s ease; }
-        .recrow:hover { background: rgba(94,234,212,0.035) !important; }
+        .recrow:hover { background: rgba(var(--accent-rgb),0.035) !important; }
         .glass { backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); }
         :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
         @media (prefers-reduced-motion: reduce) {
@@ -1308,7 +1319,7 @@ function App() {
         .print-only { display: none; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(94,234,212,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: rgba(var(--accent-rgb),0.1); border-radius: 3px; }
 
         @media (max-width: 640px) {
           .mobile-stack { flex-direction: column !important; align-items: stretch !important; }
@@ -1338,10 +1349,10 @@ function App() {
             background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b",
             fontWeight: 800, fontSize: 40, fontFamily: "'Outfit',sans-serif",
             animation: "spinIn 0.6s cubic-bezier(.2,.8,.2,1), loaderGlow 2.4s ease-in-out 0.6s infinite, loaderFloat 3s ease-in-out 0.6s infinite",
-          }}>f</div>
+          }}>{(config.business.name || "?").charAt(0).toUpperCase()}</div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: -0.3 }}>fanlink</div>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase", marginTop: 4 }}>Chatting agency</div>
+            <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: -0.3 }}>{config.business.name}</div>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase", marginTop: 4 }}>{config.business.tagline}</div>
           </div>
           <div style={{ width: 180, height: 3, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden", position: "relative" }}>
             <div style={{ position: "absolute", top: 0, width: "40%", height: "100%", borderRadius: 99,
@@ -1358,20 +1369,28 @@ function App() {
       }}>
         <div style={{ maxWidth: 1020, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src={LOGO} alt="Fanlink" style={{
-              width: 32, height: 32, borderRadius: 9,
-              boxShadow: "0 4px 16px rgba(94,234,212,0.15)",
-              objectFit: "contain", background: "rgba(0,0,0,0.15)",
-            }} />
+            {config.business.logo ? (
+              <img src={config.business.logo} alt={config.business.name} style={{
+                width: 32, height: 32, borderRadius: 9,
+                boxShadow: "0 4px 16px rgba(var(--accent-rgb),0.15)",
+                objectFit: "contain", background: "rgba(0,0,0,0.15)",
+              }} />
+            ) : (
+              <div style={{
+                width: 32, height: 32, borderRadius: 9, display: "grid", placeItems: "center",
+                background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b",
+                fontWeight: 800, fontSize: 17, fontFamily: "'Outfit',sans-serif",
+              }}>{(config.business.name || "?").charAt(0).toUpperCase()}</div>
+            )}
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>Fanlink Chatting</div>
-              <div className="mobile-hide" style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1 }}>Chatting Agency</div>
+              <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>{config.business.name}</div>
+              <div className="mobile-hide" style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1 }}>{config.business.tagline}</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <div style={{ display: "flex", gap: 5 }}>
-              <Badge>{data.clients.length} <span className="mobile-hide">clients</span></Badge>
-              <Badge>{data.chatters.length} <span className="mobile-hide">chatters</span></Badge>
+              <Badge>{data.clients.length} <span className="mobile-hide">{t.client.many.toLowerCase()}</span></Badge>
+              <Badge>{data.chatters.length} <span className="mobile-hide">{t.staff.many.toLowerCase()}</span></Badge>
             </div>
           </div>
         </div>
@@ -1410,7 +1429,7 @@ function App() {
 
             <div className="mobile-grid" style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
               <StatCard label={`Total ${t.revenue.many}`} amount={totalSales} accent="var(--accent-glow)" gradient delay={0} />
-              <StatCard label={agencyCutLabel} amount={totalAgency} accent="rgba(94,234,212,0.08)" delay={70} />
+              <StatCard label={agencyCutLabel} amount={totalAgency} accent="rgba(var(--accent-rgb),0.08)" delay={70} />
               <StatCard label={chatterCutLabel} amount={totalChatterPay} accent="rgba(167,139,250,0.10)" delay={140} />
             </div>
 
@@ -1555,7 +1574,7 @@ function App() {
                       <div key={c.id} style={{ marginBottom: 8 }}>
                         <form onSubmit={(e) => handleFormSubmit(e, c.id, vals.length - 1)} className="mobile-p-small" style={{
                           padding: "14px 16px",
-                          background: has ? "rgba(94,234,212,0.025)" : "rgba(255,255,255,0.012)",
+                          background: has ? "rgba(var(--accent-rgb),0.025)" : "rgba(255,255,255,0.012)",
                           border: "1px solid " + (has ? C.accentBorder : "rgba(255,255,255,0.04)"),
                           borderRadius: 13, transition: "all 0.2s",
                         }}>
@@ -1595,7 +1614,7 @@ function App() {
                                       borderRadius: 7, color: "#fff", fontSize: 14, outline: "none",
                                       fontFamily: "'JetBrains Mono',monospace", transition: "border-color 0.2s",
                                     }}
-                                    onFocus={(e) => { e.target.style.borderColor = "rgba(94,234,212,0.35)"; }}
+                                    onFocus={(e) => { e.target.style.borderColor = "rgba(var(--accent-rgb),0.35)"; }}
                                     onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.07)"; }}
                                   />
                                   {vals.length > 1 && (
@@ -1614,7 +1633,7 @@ function App() {
                           <div className="mobile-p-small" style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between",
                             marginTop: 10, padding: "10px 14px",
-                            background: "rgba(94,234,212,0.05)", borderRadius: 10,
+                            background: "rgba(var(--accent-rgb),0.05)", borderRadius: 10,
                             border: "1px solid " + C.accentBorder,
                           }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -1639,7 +1658,7 @@ function App() {
                               background: "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
                               border: "none", borderRadius: 8, color: "#04231b", padding: "8px 14px",
                               cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Outfit',sans-serif",
-                              boxShadow: "0 2px 12px rgba(94,234,212,0.15)",
+                              boxShadow: "0 2px 12px rgba(var(--accent-rgb),0.15)",
                             }}>📤 Share</button>
                           </div>
                         )}
@@ -1669,7 +1688,7 @@ function App() {
                         background: "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
                         border: "none", borderRadius: 7, color: "#04231b", padding: "6px 14px",
                         cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Outfit',sans-serif",
-                        boxShadow: "0 2px 10px rgba(94,234,212,0.12)",
+                        boxShadow: "0 2px 10px rgba(var(--accent-rgb),0.12)",
                       }}>📤 Share All</button>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
@@ -1840,7 +1859,7 @@ function App() {
                     <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4, marginBottom: 3 }}>TOTAL</div>
                     <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(filteredRecords.reduce((s, r) => s + r.amount, 0))}</div>
                   </div>
-                  <div style={{ background: "rgba(94,234,212,0.04)", borderRadius: 11, padding: "12px 18px", flex: "1 1 130px" }}>
+                  <div style={{ background: "rgba(var(--accent-rgb),0.04)", borderRadius: 11, padding: "12px 18px", flex: "1 1 130px" }}>
                     <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4, marginBottom: 3 }}>YOUR CUT</div>
                     <div style={{ fontSize: 18, fontWeight: 700, color: C.accent2 }}>{fmt(filteredRecords.reduce((s, r) => s + r.agencyCut, 0))}</div>
                   </div>
@@ -1857,7 +1876,7 @@ function App() {
                 <div className="mobile-scroll-x" style={{ borderRadius: 14, overflow: "hidden", border: "1px solid " + C.cardBorder }}>
                   <div style={{
                     display: "grid", gridTemplateColumns: "1fr 0.8fr 0.7fr 0.9fr 0.7fr 0.7fr 64px",
-                    minWidth: 600, padding: "10px 18px", background: "rgba(94,234,212,0.015)",
+                    minWidth: 600, padding: "10px 18px", background: "rgba(var(--accent-rgb),0.015)",
                     fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace",
                     letterSpacing: 0.7, textTransform: "uppercase", gap: 6,
                   }}>
@@ -1866,7 +1885,7 @@ function App() {
                   {filteredRecords.map((r) => (
                     <div key={r.id} className="recrow" style={{
                       display: "grid", gridTemplateColumns: "1fr 0.8fr 0.7fr 0.9fr 0.7fr 0.7fr 64px",
-                      minWidth: 600, padding: "12px 18px", borderTop: "1px solid rgba(94,234,212,0.03)",
+                      minWidth: 600, padding: "12px 18px", borderTop: "1px solid rgba(var(--accent-rgb),0.03)",
                       fontSize: 13, alignItems: "center", gap: 6,
                     }}>
                       <div style={{ fontWeight: 600 }}>{chatterNameFn(r.chatterId)}</div>
@@ -2084,7 +2103,7 @@ function App() {
 
         {reviewItems && reviewItems.length > 0 && (
           <div style={{
-            background: "rgba(94,234,212,0.05)", border: "1px solid " + C.accentBorder,
+            background: "rgba(var(--accent-rgb),0.05)", border: "1px solid " + C.accentBorder,
             borderRadius: 12, padding: 14, marginBottom: 18
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
