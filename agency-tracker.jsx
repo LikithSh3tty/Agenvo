@@ -156,6 +156,17 @@ const partLabel = (part, symbol = "$") => {
     default: return `${((Number(part.rate) || 0) * 100).toFixed(1).replace(/\.0$/, "")}%`;
   }
 };
+
+// The agency's default commission parts (for seeding new clients). Reads either the new
+// {agency, staff} part shape or the legacy {agencyShare, staffShare} fractions.
+const defaultCommissionParts = (config) => {
+  const d = (config && config.commission && config.commission.defaults) || {};
+  if (d.agency && d.staff) return { agency: d.agency, staff: d.staff };
+  return {
+    agency: { model: "percent", rate: d.agencyShare != null ? d.agencyShare : AGENCY_CUT },
+    staff: { model: "percent", rate: d.staffShare != null ? d.staffShare : CHATTER_CUT },
+  };
+};
 const AGENCY_PRESETS = {
   chatting: {
     label: "Chatting agency", icon: "💬", tagline: "Chatting Agency",
@@ -1110,16 +1121,16 @@ function Onboarding({ onComplete }) {
   const [symbol, setSymbol] = useState("$");
   const [accent, setAccent] = useState("#5EEAD4");
   const [terms, setTerms] = useState(AGENCY_PRESETS.chatting.terms);
-  const [agPct, setAgPct] = useState(AGENCY_PRESETS.chatting.commission.agencyShare * 100);
-  const [stPct, setStPct] = useState(AGENCY_PRESETS.chatting.commission.staffShare * 100);
+  const [agencyDefault, setAgencyDefault] = useState({ model: "percent", rate: AGENCY_PRESETS.chatting.commission.agencyShare });
+  const [staffDefault, setStaffDefault] = useState({ model: "percent", rate: AGENCY_PRESETS.chatting.commission.staffShare });
   const preset = AGENCY_PRESETS[type];
 
   const pickType = (k) => {
     setType(k);
     const p = AGENCY_PRESETS[k];
     setTerms(JSON.parse(JSON.stringify(p.terms)));
-    setAgPct(p.commission.agencyShare * 100);
-    setStPct(p.commission.staffShare * 100);
+    setAgencyDefault({ model: "percent", rate: p.commission.agencyShare });
+    setStaffDefault({ model: "percent", rate: p.commission.staffShare });
   };
   const setTerm = (grp, sub, v) => setTerms((s) => ({ ...s, [grp]: { ...s[grp], [sub]: v } }));
 
@@ -1135,7 +1146,7 @@ function Onboarding({ onComplete }) {
     base.branding.accent2 = darken(accent, 0.12);
     base.branding.accent3 = darken(accent, 0.22);
     base.terms = terms;
-    base.commission.defaults = { agencyShare: (Number(agPct) || 0) / 100, staffShare: (Number(stPct) || 0) / 100 };
+    base.commission.defaults = { agency: agencyDefault, staff: staffDefault };
     base.invoice.lineItemLabel = preset.lineItemLabel;
     base.onboarded = true;
     onComplete(base);
@@ -1214,11 +1225,26 @@ function Onboarding({ onComplete }) {
               <div style={half}><Field label="You call staff"><input style={inpStyle} value={terms.staff.many} onChange={(e) => setTerm("staff", "many", e.target.value)} /></Field></div>
             </div>
             <Field label="You call revenue items"><input style={inpStyle} value={terms.revenue.many} onChange={(e) => setTerm("revenue", "many", e.target.value)} /></Field>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <div style={half}><Field label={`${terms.agencyShareLabel} (%)`}><input type="number" step="0.1" style={inpStyle} value={agPct} onChange={(e) => setAgPct(e.target.value)} /></Field></div>
-              <div style={half}><Field label={`${terms.staffShareLabel} (%)`}><input type="number" step="0.1" style={inpStyle} value={stPct} onChange={(e) => setStPct(e.target.value)} /></Field></div>
-            </div>
-            <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 2 }}>Default split used when you add a new {terms.client.one.toLowerCase()} — editable per {terms.client.one.toLowerCase()}.</div>
+            <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "8px 0 16px" }} />
+            <div style={{ fontSize: 12, color: C.accent, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Default payout</div>
+            <p style={{ fontSize: 12.5, color: C.textDim, marginBottom: 16 }}>How you and your {terms.staff.many.toLowerCase()} get paid — percentage, flat fee, tiered, or hourly. This is just the starting point for new {terms.client.many.toLowerCase()}; you can set it per {terms.client.one.toLowerCase()}.</p>
+            <Field label={terms.agencyShareLabel}>
+              <CommissionEditor value={agencyDefault} onChange={setAgencyDefault} symbol={symbol} />
+            </Field>
+            <Field label={terms.staffShareLabel}>
+              <CommissionEditor value={staffDefault} onChange={setStaffDefault} symbol={symbol} />
+            </Field>
+            {(() => {
+              const ex = 1000;
+              const usesHours = agencyDefault.model === "hourly" || staffDefault.model === "hourly";
+              const ag = computeShare(agencyDefault, ex, 10);
+              const st = computeShare(staffDefault, ex, 10);
+              return (
+                <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 4, fontFamily: "'JetBrains Mono',monospace" }}>
+                  e.g. on {symbol}{ex.toLocaleString()}{usesHours ? " · 10h" : ""}: you {symbol}{ag.toLocaleString()} · {terms.staff.one.toLowerCase()} {symbol}{st.toLocaleString()}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1264,8 +1290,9 @@ function App() {
   // When the Add-Client modal opens, seed the commission from the agency's configured defaults.
   useEffect(() => {
     if (addClientOpen) {
-      setNewAgencyPart({ model: "percent", rate: config.commission?.defaults?.agencyShare ?? AGENCY_CUT });
-      setNewStaffPart({ model: "percent", rate: config.commission?.defaults?.staffShare ?? CHATTER_CUT });
+      const dp = defaultCommissionParts(config);
+      setNewAgencyPart(JSON.parse(JSON.stringify(dp.agency)));
+      setNewStaffPart(JSON.parse(JSON.stringify(dp.staff)));
     }
   }, [addClientOpen]);
 
