@@ -151,6 +151,15 @@ const hexToRgb = (hex) => {
   return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
 };
 
+// Darken a hex by a fraction (0..1) — used to derive the accent ramp from one color.
+const darken = (hex, f) => {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || "").trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((x) => Math.max(0, Math.round(x * (1 - f))));
+  return "#" + ch.map((x) => x.toString(16).padStart(2, "0")).join("");
+};
+
 const toWords = (num) => {
   const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
   const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
@@ -809,6 +818,135 @@ function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDone
 
 /* ═══ MAIN APP ═══ */
 
+function SettingsPanel({ initial, onClose, onSave }) {
+  const [d, setD] = useState(() => JSON.parse(JSON.stringify(initial)));
+  const setB = (k, v) => setD((s) => ({ ...s, business: { ...s.business, [k]: v } }));
+  const setL = (k, v) => setD((s) => ({ ...s, locale: { ...s.locale, [k]: v } }));
+  const setBr = (k, v) => setD((s) => ({ ...s, branding: { ...s.branding, [k]: v } }));
+  const setInv = (k, v) => setD((s) => ({ ...s, invoice: { ...s.invoice, [k]: v } }));
+  const setTerm = (grp, sub, v) => setD((s) => ({ ...s, terms: { ...s.terms, [grp]: { ...s.terms[grp], [sub]: v } } }));
+  const setTermFlat = (k, v) => setD((s) => ({ ...s, terms: { ...s.terms, [k]: v } }));
+
+  const save = () => {
+    const out = JSON.parse(JSON.stringify(d));
+    out.business.address = (typeof d.business.address === "string"
+      ? d.business.address.split("\n")
+      : d.business.address || []).map((l) => l.trim()).filter(Boolean);
+    if (d.branding.accent !== initial.branding.accent) {
+      out.branding.accent2 = darken(d.branding.accent, 0.12);
+      out.branding.accent3 = darken(d.branding.accent, 0.22);
+    }
+    out.locale.taxRate = Number(d.locale.taxRate) || 0;
+    out.invoice.fiscalYearStartMonth = Number(d.invoice.fiscalYearStartMonth) || 1;
+    out.invoice.dueDays = Number(d.invoice.dueDays) || 0;
+    onSave(out);
+  };
+
+  const addressStr = Array.isArray(d.business.address) ? d.business.address.join("\n") : (d.business.address || "");
+  const Section = ({ title, children }) => (
+    <div className="rise" style={{ background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 16, padding: "18px 20px", marginBottom: 16 }}>
+      <div style={{ fontSize: 12, color: C.accent, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1, textTransform: "uppercase", marginBottom: 14 }}>{title}</div>
+      {children}
+    </div>
+  );
+  const Row = ({ children }) => <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{children}</div>;
+  const half = { flex: "1 1 160px", minWidth: 140 };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 2000, background: "var(--bg)",
+      backgroundImage: "radial-gradient(800px 500px at 12% -8%, rgba(var(--accent-rgb),0.10), transparent 60%)",
+      overflowY: "auto", animation: "fadeIn 0.2s ease",
+    }}>
+      <div style={{ maxWidth: 660, margin: "0 auto", padding: "28px 20px 90px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 700 }}>Settings</h2>
+            <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 2 }}>Customize how the app is branded and worded for your agency.</div>
+          </div>
+          <button onClick={onClose} aria-label="Close settings" style={{ background: "rgba(255,255,255,0.05)", border: "none", color: C.textMuted, width: 34, height: 34, borderRadius: 9, cursor: "pointer", fontSize: 15 }}>✖</button>
+        </div>
+
+        <Section title="Business">
+          <Field label="Business name"><input style={inpStyle} value={d.business.name} onChange={(e) => setB("name", e.target.value)} /></Field>
+          <Field label="Tagline"><input style={inpStyle} value={d.business.tagline} onChange={(e) => setB("tagline", e.target.value)} /></Field>
+          <Field label="Logo URL (blank = use initial letter)"><input style={inpStyle} value={d.business.logo} onChange={(e) => setB("logo", e.target.value)} placeholder="/logo.svg or https://..." /></Field>
+          <Field label="Address (one line per row, shown on invoices)">
+            <textarea style={{ ...inpStyle, minHeight: 90, resize: "vertical", fontFamily: "'Outfit',sans-serif" }} value={addressStr} onChange={(e) => setB("address", e.target.value)} />
+          </Field>
+        </Section>
+
+        <Section title="Branding">
+          <Field label="Accent color">
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <input type="color" value={d.branding.accent} onChange={(e) => setBr("accent", e.target.value)}
+                style={{ width: 48, height: 38, padding: 0, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9, background: "none", cursor: "pointer" }} />
+              <input style={{ ...inpStyle, fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase" }} value={d.branding.accent} onChange={(e) => setBr("accent", e.target.value)} />
+            </div>
+            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>The whole app recolors to match. Lighter/darker shades are derived automatically.</div>
+          </Field>
+        </Section>
+
+        <Section title="Terminology">
+          <Row>
+            <div style={half}><Field label="Client (singular)"><input style={inpStyle} value={d.terms.client.one} onChange={(e) => setTerm("client", "one", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Clients (plural)"><input style={inpStyle} value={d.terms.client.many} onChange={(e) => setTerm("client", "many", e.target.value)} /></Field></div>
+          </Row>
+          <Row>
+            <div style={half}><Field label="Staff member (singular)"><input style={inpStyle} value={d.terms.staff.one} onChange={(e) => setTerm("staff", "one", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Staff (plural)"><input style={inpStyle} value={d.terms.staff.many} onChange={(e) => setTerm("staff", "many", e.target.value)} /></Field></div>
+          </Row>
+          <Row>
+            <div style={half}><Field label="Revenue item (singular)"><input style={inpStyle} value={d.terms.revenue.one} onChange={(e) => setTerm("revenue", "one", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Revenue (plural)"><input style={inpStyle} value={d.terms.revenue.many} onChange={(e) => setTerm("revenue", "many", e.target.value)} /></Field></div>
+          </Row>
+          <Row>
+            <div style={half}><Field label="Agency share label"><input style={inpStyle} value={d.terms.agencyShareLabel} onChange={(e) => setTermFlat("agencyShareLabel", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Staff pay label"><input style={inpStyle} value={d.terms.staffShareLabel} onChange={(e) => setTermFlat("staffShareLabel", e.target.value)} /></Field></div>
+          </Row>
+        </Section>
+
+        <Section title="Currency & Tax">
+          <Row>
+            <div style={half}><Field label="Currency code"><input style={inpStyle} value={d.locale.currency} onChange={(e) => setL("currency", e.target.value.toUpperCase())} placeholder="USD" /></Field></div>
+            <div style={half}><Field label="Symbol"><input style={inpStyle} value={d.locale.currencySymbol} onChange={(e) => setL("currencySymbol", e.target.value)} placeholder="$" /></Field></div>
+            <div style={half}><Field label="Locale"><input style={inpStyle} value={d.locale.locale} onChange={(e) => setL("locale", e.target.value)} placeholder="en-US" /></Field></div>
+          </Row>
+          <Row>
+            <div style={half}><Field label="Tax label"><input style={inpStyle} value={d.locale.taxLabel} onChange={(e) => setL("taxLabel", e.target.value)} placeholder="VAT / GST" /></Field></div>
+            <div style={half}><Field label="Tax rate (%)"><input type="number" step="0.1" style={inpStyle} value={(Number(d.locale.taxRate) || 0) * 100} onChange={(e) => setL("taxRate", (Number(e.target.value) || 0) / 100)} /></Field></div>
+          </Row>
+          <Field label="Tax line on invoice (optional)"><input style={inpStyle} value={d.locale.taxLine} onChange={(e) => setL("taxLine", e.target.value)} /></Field>
+          <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: C.textDim, cursor: "pointer", marginTop: 4 }}>
+            <input type="checkbox" checked={d.locale.amountInWords !== false} onChange={(e) => setL("amountInWords", e.target.checked)} style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
+            Show amount in words on invoices
+          </label>
+        </Section>
+
+        <Section title="Invoice">
+          <Field label="Invoice title"><input style={inpStyle} value={d.invoice.title} onChange={(e) => setInv("title", e.target.value)} /></Field>
+          <Row>
+            <div style={half}><Field label="Number format"><input style={{ ...inpStyle, fontFamily: "'JetBrains Mono',monospace" }} value={d.invoice.numberFormat} onChange={(e) => setInv("numberFormat", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Fiscal year start month"><input type="number" min="1" max="12" style={inpStyle} value={d.invoice.fiscalYearStartMonth} onChange={(e) => setInv("fiscalYearStartMonth", e.target.value)} /></Field></div>
+          </Row>
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: -6, marginBottom: 12 }}>Tokens: {"{FY} {YYYY} {YY} {MM} {SEQ}"}</div>
+          <Row>
+            <div style={half}><Field label="Line-item label"><input style={inpStyle} value={d.invoice.lineItemLabel} onChange={(e) => setInv("lineItemLabel", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Payment due (days)"><input type="number" min="0" style={inpStyle} value={d.invoice.dueDays} onChange={(e) => setInv("dueDays", e.target.value)} /></Field></div>
+          </Row>
+          <Field label="Notes"><input style={inpStyle} value={d.invoice.notes} onChange={(e) => setInv("notes", e.target.value)} /></Field>
+          <Field label="Signatory"><input style={inpStyle} value={d.invoice.signatory} onChange={(e) => setInv("signatory", e.target.value)} /></Field>
+        </Section>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save}>Save settings</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [data, setData] = useState(defaultState);
   const config = data.config || defaultConfig;
@@ -1268,6 +1406,8 @@ function App() {
 
   // Loader: keep the splash up briefly so it reads as intentional, then fade out.
   const [bootDone, setBootDone] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const saveConfig = (c) => { persist({ ...data, config: mergeConfig(c) }); setSettingsOpen(false); };
   const [loaderGone, setLoaderGone] = useState(false);
   useEffect(() => { const t = setTimeout(() => setBootDone(true), 900); return () => clearTimeout(t); }, []);
   const ready = !loading && bootDone;
@@ -1437,6 +1577,10 @@ function App() {
               <Badge>{data.clients.length} <span className="mobile-hide">{t.client.many.toLowerCase()}</span></Badge>
               <Badge>{data.chatters.length} <span className="mobile-hide">{t.staff.many.toLowerCase()}</span></Badge>
             </div>
+            <button onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings" style={{
+              background: "rgba(255,255,255,0.05)", border: "1px solid var(--card-border)", color: C.textDim,
+              width: 32, height: 32, borderRadius: 9, cursor: "pointer", fontSize: 15, display: "grid", placeItems: "center",
+            }}>⚙</button>
           </div>
         </div>
       </div>
@@ -2060,6 +2204,8 @@ function App() {
       </Modal>
 
       {shareCard && <ShareCard {...shareCard} onClose={() => setShareCard(null)} />}
+      {settingsOpen && <SettingsPanel initial={config} onClose={() => setSettingsOpen(false)} onSave={saveConfig} />}
+
       {invoiceView && <InvoiceView {...invoiceView} onClose={() => setInvoiceView(null)} />}
 
       {/* Edit a single sale record */}
