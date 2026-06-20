@@ -27,9 +27,7 @@ errors with a missing rollup module, run `npm install @rollup/rollup-linux-x64-g
       checkbox, "N summed" over-count warning, live running total before applying
 
 ## Deferred (do deliberately, each as its own pass)
-- [ ] Money as integer cents — touches every amount/cut calculation. Store cents (ints),
-      add fmtCents()/toCents() helpers, migrate existing records on load via a version
-      bump on STORAGE_KEY, round only at display. Biggest remaining correctness item.
+- [x] Money as integer cents — DONE: shares rounded to whole cents at source; all totals sum in integer cents (toCents/fromCents/sumMoney); no storage migration.
 - [ ] Performance — wrap dashboard/client/chatter aggregates in useMemo; build Map
       lookups (id->client, id->chatter) once instead of .find() inside .map().
 - [ ] True multi-currency — parser already reads currency symbols but display is USD-only.
