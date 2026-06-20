@@ -212,6 +212,17 @@ const mergeConfig = (saved) => {
       base[k] = saved[k];
     }
   }
+  // One-time cleanup: strip leftover single-tenant defaults that older saves baked in,
+  // so they don't persist as if the user had chosen them.
+  if (base.locale.taxLine === "Place of supply: Maharashtra") base.locale.taxLine = "";
+  if (Array.isArray(base.business.address) &&
+      base.business.address.join("|") === "Ghansoli|Navi Mumbai|Vashi 400703|Maharashtra MH|India") {
+    base.business.address = [];
+  }
+  if (base.business.country === "India") base.business.country = "";
+  if (base.business.logo === "/logo.svg") base.business.logo = "";
+  if (base.business.name === "Fanlink Chatting") base.business.name = "AgencyX";
+  if (base.business.tagline === "Chatting Agency") base.business.tagline = "Agency Dashboard";
   return base;
 };
 
