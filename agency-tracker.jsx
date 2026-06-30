@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from "react";
 import AccountMenu from "./src/auth/AccountMenu.jsx";
 import DeleteAccountSection from "./src/auth/DeleteAccountSection.jsx";
+import ResetDataSection from "./src/auth/ResetDataSection.jsx";
 
 const STORAGE_KEY = "fanlink-tracker-v4";
 const THEME_KEY = "agencyx-theme"; // "light" | "dark"; falls back to OS preference
@@ -1534,7 +1535,7 @@ const SettingsSection = ({ title, children }) => (
 );
 const SettingsRow = ({ children }) => <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{children}</div>;
 
-function SettingsPanel({ initial, onClose, onSave }) {
+function SettingsPanel({ initial, onClose, onSave, onResetData }) {
   const [d, setD] = useState(() => JSON.parse(JSON.stringify(initial)));
   const setB = (k, v) => setD((s) => ({ ...s, business: { ...s.business, [k]: v } }));
   const setL = (k, v) => setD((s) => ({ ...s, locale: { ...s.locale, [k]: v } }));
@@ -1674,6 +1675,7 @@ function SettingsPanel({ initial, onClose, onSave }) {
           <Btn onClick={save}>Save settings</Btn>
         </div>
 
+        <ResetDataSection onReset={onResetData} />
         <DeleteAccountSection />
       </div>
     </div>
@@ -3211,6 +3213,11 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   const [bootDone, setBootDone] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const saveConfig = (c) => { persist({ ...data, config: mergeConfig(c) }); setSettingsOpen(false); };
+  // Wipe all workspace rows for this account, keeping the login and current settings.
+  const resetWorkspaceData = () => {
+    persist({ ...JSON.parse(JSON.stringify(defaultState)), config: data.config });
+    setSettingsOpen(false);
+  };
   const [loaderGone, setLoaderGone] = useState(false);
   useEffect(() => { const t = setTimeout(() => setBootDone(true), 900); return () => clearTimeout(t); }, []);
   const ready = !loading && bootDone;
@@ -4122,7 +4129,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
       {shareCard && <ShareCard {...shareCard} onClose={() => setShareCard(null)} />}
       {!loading && needsOnboarding && <Onboarding onComplete={saveConfig} />}
 
-      {settingsOpen && <SettingsPanel initial={config} onClose={() => setSettingsOpen(false)} onSave={saveConfig} />}
+      {settingsOpen && <SettingsPanel initial={config} onClose={() => setSettingsOpen(false)} onSave={saveConfig} onResetData={resetWorkspaceData} />}
 
       {invoiceView && <InvoiceView {...invoiceView} invoices={data.invoices || []} onUpsertInvoice={upsertInvoice} onClose={() => setInvoiceView(null)} onOpenSettings={() => setSettingsOpen(true)} />}
 
