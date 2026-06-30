@@ -3341,7 +3341,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
           .mobile-mb-none { margin-bottom: 0 !important; }
           .mobile-scroll-x { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
         }
-        .brutal-amt { border: 2.5px solid #111 !important; border-radius: 0 !important; background: #fff !important; font-weight: 700 !important; box-shadow: 3px 3px 0 #111; transition: box-shadow .2s ease, border-color .2s ease, transform .15s ease; }
+        .brutal-amt { border: 2.5px solid #111 !important; border-radius: 0 !important; background: #fff !important; color: #111 !important; font-weight: 700 !important; box-shadow: 3px 3px 0 #111; transition: box-shadow .2s ease, border-color .2s ease, transform .15s ease; }
         .brutal-amt::placeholder { color: #9a9a9a; transition: color .2s ease; }
         .brutal-amt:focus::placeholder { color: transparent; }
         .brutal-amt:focus { border-color: var(--pop) !important; box-shadow: 3px 3px 0 #111, 6px 6px 0 var(--pop); animation: brutalPulse 1.8s ease-in-out infinite; }
