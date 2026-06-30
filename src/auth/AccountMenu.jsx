@@ -1,22 +1,42 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "./AuthContext.jsx";
 
-// Account chip for the app header: avatar + dropdown with the signed-in email and
-// a sign-out action. Uses the app's CSS variables (mounted by <App>) so it themes
-// automatically in light/dark.
+// Account chip for the app header: avatar + dropdown with the signed-in email and a
+// sign-out action. The dropdown is rendered through a portal at <body> with a high
+// z-index so it floats above the app's header/tab bar/modals regardless of where the
+// trigger sits in the stacking order. Uses the app's CSS variables for theming.
 export default function AccountMenu() {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const ref = useRef(null);
+  const [coords, setCoords] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setCoords({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) });
+  };
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    place();
+    const onDoc = (e) => {
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
   }, [open]);
 
   if (!user) return null;
@@ -29,9 +49,51 @@ export default function AccountMenu() {
     try { await signOut(); } catch { setBusy(false); }
   };
 
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
+  const menu = open && coords ? createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      style={{
+        position: "fixed", top: coords.top, right: coords.right, zIndex: 5000,
+        minWidth: 220, background: "var(--card)", border: "1px solid var(--card-border)",
+        borderRadius: 12, boxShadow: "0 18px 44px rgba(var(--ink-rgb),0.16)",
+        padding: 6, animation: "slideUp 0.18s ease",
+      }}
+    >
+      <div style={{ padding: "9px 11px 10px", borderBottom: "1px solid var(--card-border)" }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+        {user.email && user.email !== label && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
+        )}
+      </div>
       <button
+        type="button"
+        role="menuitem"
+        onClick={doSignOut}
+        disabled={busy}
+        style={{
+          width: "100%", textAlign: "left", marginTop: 4, padding: "9px 11px",
+          background: "transparent", border: 0, borderRadius: 8, cursor: busy ? "default" : "pointer",
+          color: "var(--ink)", font: "inherit", fontSize: 13.5, fontWeight: 600,
+          display: "flex", alignItems: "center", gap: 9,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(var(--ink-rgb),0.06)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="m16 17 5-5-5-5" /><path d="M21 12H9" />
+        </svg>
+        {busy ? "Signing out…" : "Sign out"}
+      </button>
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <>
+      <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Account menu"
@@ -49,45 +111,7 @@ export default function AccountMenu() {
           ? <img src={user.photoURL} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
           : initial}
       </button>
-
-      {open && (
-        <div
-          role="menu"
-          style={{
-            position: "absolute", right: 0, top: "calc(100% + 8px)", zIndex: 200,
-            minWidth: 220, background: "var(--card)", border: "1px solid var(--card-border)",
-            borderRadius: 12, boxShadow: "0 18px 44px rgba(var(--ink-rgb),0.16)",
-            padding: 6, animation: "slideUp 0.18s ease",
-          }}
-        >
-          <div style={{ padding: "9px 11px 10px", borderBottom: "1px solid var(--card-border)" }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-            {user.email && user.email !== label && (
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
-            )}
-          </div>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={doSignOut}
-            disabled={busy}
-            style={{
-              width: "100%", textAlign: "left", marginTop: 4, padding: "9px 11px",
-              background: "transparent", border: 0, borderRadius: 8, cursor: busy ? "default" : "pointer",
-              color: "var(--ink)", font: "inherit", fontSize: 13.5, fontWeight: 600,
-              display: "flex", alignItems: "center", gap: 9,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(var(--ink-rgb),0.06)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <path d="m16 17 5-5-5-5" /><path d="M21 12H9" />
-            </svg>
-            {busy ? "Signing out…" : "Sign out"}
-          </button>
-        </div>
-      )}
-    </div>
+      {menu}
+    </>
   );
 }
