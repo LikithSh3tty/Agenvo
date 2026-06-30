@@ -1,6 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "../agency-tracker.jsx";
+import { AuthProvider } from "./auth/AuthContext.jsx";
+import AuthGate from "./auth/AuthGate.jsx";
 
 // Polyfill the window.storage API expected by the app.
 if (!window.storage) {
@@ -14,9 +16,8 @@ if (!window.storage) {
   };
 }
 
-// Quick visual sanity check: ensure the script runs by changing the background briefly
 if (typeof document !== "undefined") {
-  document.body.style.background = "#111";
+  document.body.style.background = "#FAFAFA";
 
   // Show runtime errors in the page to help debugging when the app fails to render.
   window.addEventListener("error", (event) => {
@@ -30,4 +31,10 @@ if (typeof document !== "undefined") {
   });
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <AuthProvider>
+    <AuthGate>
+      <App />
+    </AuthGate>
+  </AuthProvider>
+);

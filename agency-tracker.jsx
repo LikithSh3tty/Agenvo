@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from "react";
+import AccountMenu from "./src/auth/AccountMenu.jsx";
 
 const STORAGE_KEY = "fanlink-tracker-v4";
-const defaultState = { clients: [], chatters: [], records: [] };
+const THEME_KEY = "agencyx-theme"; // "light" | "dark"; falls back to OS preference
+const defaultState = { clients: [], chatters: [], records: [], brands: [], entries: [], invoices: [] };
 
 const genId = () =>
   (typeof crypto !== "undefined" && crypto.randomUUID)
@@ -96,6 +98,13 @@ const shortDate = (d) => {
   const dt = new Date(d + "T00:00:00");
   return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
+// Monday-anchored week key (YYYY-MM-DD of that week's Monday) for weekly aggregation.
+const weekKey = (d) => {
+  const dt = new Date(d + "T00:00:00");
+  const off = (dt.getDay() + 6) % 7;
+  dt.setDate(dt.getDate() - off);
+  return dt.toISOString().slice(0, 10);
+};
 const AGENCY_CUT = 0.075;
 const CHATTER_CUT = 0.125;
 
@@ -126,9 +135,9 @@ const defaultConfig = {
     staffShareLabel: "Chatter Pay",
   },
   branding: {
-    accent: "#5EEAD4",
-    accent2: "#34D399",
-    accent3: "#2DD4BF",
+    accent: "#111111",
+    accent2: "#5C5C5C",
+    accent3: "#2E2E2E",
   },
   invoice: {
     title: "Customer Invoices",
@@ -144,6 +153,8 @@ const defaultConfig = {
     defaults: { agencyShare: AGENCY_CUT, staffShare: CHATTER_CUT },
   },
   currencies: [], // additional non-base currencies: { code, symbol, rate, locale }
+  agencyType: "service", // "service" (Type 1) | "management" (Type 2)
+  expenseCategories: [], // Type 2 — user-defined expense categories: { id, label, color }
   onboarded: false,
 };
 
@@ -185,6 +196,12 @@ const computeShares = (client, amount, hours = 0) => {
   return { agencyShare: computeShare(c.agency, amount, hours), staffShare: computeShare(c.staff, amount, hours) };
 };
 
+// Extra payout roles for a client (beyond the agency cut and the primary staff/chatter cut).
+// Each role: { id, name, rate } where rate is a percent fraction (0.08 = 8%).
+const clientRoles = (client) => (client && Array.isArray(client.roles) ? client.roles : []);
+// The cut a given extra role takes on an amount.
+const roleCut = (role, amount) => money((Number(amount) || 0) * (Number(role && role.rate) || 0));
+
 // True if any side of a client's commission is hourly (so a record needs an hours input).
 const clientUsesHours = (client) => {
   const c = clientCommission(client);
@@ -212,26 +229,21 @@ const defaultCommissionParts = (config) => {
     staff: { model: "percent", rate: d.staffShare != null ? d.staffShare : CHATTER_CUT },
   };
 };
+// Two agency business models (see Agency_Models_Document.pdf).
+//   service    (Type 1) — markup model: invoice = team cost + agency fee.
+//   management (Type 2) — profit model: profit = client payment − expenses.
 const AGENCY_PRESETS = {
-  chatting: {
-    label: "Chatting agency", icon: "💬", tagline: "Chatting Agency",
-    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Chatter", many: "Chatters" }, revenue: { one: "Sale", many: "Sales" }, agencyShareLabel: "Agency Cut", staffShareLabel: "Chatter Pay" },
-    commission: { agencyShare: 0.075, staffShare: 0.125 }, lineItemLabel: "Agency Fees",
-  },
-  marketing: {
-    label: "Marketing / digital", icon: "📈", tagline: "Marketing Agency",
-    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Specialist", many: "Specialists" }, revenue: { one: "Campaign", many: "Campaigns" }, agencyShareLabel: "Agency Fee", staffShareLabel: "Specialist Pay" },
-    commission: { agencyShare: 0.20, staffShare: 0.10 }, lineItemLabel: "Marketing Services",
-  },
-  web: {
-    label: "Web / design studio", icon: "🎨", tagline: "Web & Design Studio",
-    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Developer", many: "Developers" }, revenue: { one: "Project", many: "Projects" }, agencyShareLabel: "Agency Fee", staffShareLabel: "Developer Pay" },
-    commission: { agencyShare: 0.30, staffShare: 0.15 }, lineItemLabel: "Development Services",
-  },
-  custom: {
-    label: "Something else", icon: "✨", tagline: "Agency",
-    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Team Member", many: "Team Members" }, revenue: { one: "Job", many: "Jobs" }, agencyShareLabel: "Agency Share", staffShareLabel: "Team Pay" },
+  service: {
+    type: "service", label: "Service Agency", icon: "briefcase", tagline: "Service Agency",
+    desc: "You provide a service and bill clients. Your team — chatters, designers, marketers, developers — generates sales or work value. Each client invoice = team cost + your agency fee.",
+    terms: { client: { one: "Client", many: "Clients" }, staff: { one: "Team Member", many: "Team Members" }, revenue: { one: "Sale", many: "Sales" }, agencyShareLabel: "Agency Fee", staffShareLabel: "Team Pay" },
     commission: { agencyShare: 0.10, staffShare: 0.10 }, lineItemLabel: "Services",
+  },
+  management: {
+    type: "management", label: "Management Agency", icon: "pie", tagline: "Management Agency",
+    desc: "You manage a person, creator, or brand. They pay you; you cover the operating costs (chatting, design, marketing, and more). Your profit is what's left — client payment minus expenses.",
+    terms: { client: { one: "Brand", many: "Brands" }, staff: { one: "Team Member", many: "Team Members" }, revenue: { one: "Entry", many: "Entries" }, agencyShareLabel: "Agency Fee", staffShareLabel: "Team Pay" },
+    commission: { agencyShare: 0.10, staffShare: 0.10 }, lineItemLabel: "Management Fees",
   },
 };
 
@@ -322,22 +334,61 @@ const toWords = (num) => {
 };
 
 const THEME = {
-  name: "Operator Console",
-  bg: "#070A09",
-  card: "rgba(255,255,255,0.035)",
-  cardBorder: "rgba(255,255,255,0.07)",
-  accent: "#5EEAD4",
-  accent2: "#34D399",
-  accent3: "#2DD4BF",
-  accentGlow: "rgba(var(--accent-rgb),0.14)",
+  name: "Daylight",
+  bg: "#FAFAFA",
+  card: "#FFFFFF",
+  cardBorder: "rgba(var(--ink-rgb),0.09)",
+  accent: "#111111",
+  accent2: "#5C5C5C",
+  accent3: "#2E2E2E",
+  accentRgb: "17, 17, 17",
+  accentFg: "#FFFFFF", // text/icons that sit on an accent or ink surface
+  accentGlow: "rgba(var(--accent-rgb),0.12)",
+  accentDim: "rgba(var(--accent-rgb),0.10)",
+  accentBorder: "rgba(var(--accent-rgb),0.22)",
+  textDim: "rgba(var(--ink-rgb),0.80)",
+  textMuted: "rgba(var(--ink-rgb),0.66)",
+  ink: "#15171a", // primary text color
+  inkRgb: "17, 24, 28", // ink as rgb — tints borders/fills/overlays; flips in dark
+  inkSoft: "rgba(var(--ink-rgb),0.60)",
+  earn: "#52525B",
+  violet: "#3F3F46",
+  surface: "#FFFFFF",
+  surface2: "#F1F3F4",
+  headerBg: "rgba(255,255,255,0.82)",
+  fieldBg: "rgba(var(--ink-rgb),0.03)",
+  fieldBorder: "rgba(var(--ink-rgb),0.08)",
+  scrim: "rgba(var(--ink-rgb),0.22)", // modal backdrop — stays dark in both modes
+  blur: "blur(16px)",
+};
+
+// Dark counterpart. Same keys as THEME so the CSS-variable block can swap wholesale.
+const DARK = {
+  name: "Midnight",
+  bg: "#0E1011",
+  card: "#17191B",
+  cardBorder: "rgba(255,255,255,0.10)",
+  accent: "#ECEDEE",
+  accent2: "#9BA0A6",
+  accent3: "#C9CDD2",
+  accentRgb: "236, 237, 238",
+  accentFg: "#15171a",
+  accentGlow: "rgba(var(--accent-rgb),0.10)",
   accentDim: "rgba(var(--accent-rgb),0.08)",
-  accentBorder: "rgba(var(--accent-rgb),0.16)",
-  textDim: "rgba(234,242,238,0.55)",
-  textMuted: "rgba(234,242,238,0.30)",
-  earn: "#FBBF24",
-  violet: "#A78BFA",
-  surface: "#0E1411",
-  surface2: "#0A0F0D",
+  accentBorder: "rgba(var(--accent-rgb),0.20)",
+  textDim: "rgba(236,237,238,0.80)",
+  textMuted: "rgba(236,237,238,0.55)",
+  ink: "#ECEDEE",
+  inkRgb: "236, 237, 238",
+  inkSoft: "rgba(236,237,238,0.62)",
+  earn: "#A1A1AA",
+  violet: "#C4B5FD",
+  surface: "#1C1F21",
+  surface2: "#26292C",
+  headerBg: "rgba(18,20,21,0.82)",
+  fieldBg: "rgba(255,255,255,0.04)",
+  fieldBorder: "rgba(255,255,255,0.13)",
+  scrim: "rgba(0,0,0,0.55)",
   blur: "blur(16px)",
 };
 
@@ -377,14 +428,16 @@ async function saveData(d) {
   }
 }
 
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 const printElement = (elId, title) => {
   const el = document.getElementById(elId);
   if (!el) return;
 
   const css = `
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&family=Inter:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: #fff; color: #111; font-family: 'Inter', sans-serif; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #111; font-family: 'Plus Jakarta Sans', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; letter-spacing: -0.01em; }
     body { padding: 16px; }
     #invoice-printable { width: 100% !important; max-width: 760px !important; min-height: 0 !important; margin: 0 auto !important; box-shadow: none !important; padding: 24px !important; }
     #history-printable, #history-printable * { color: #111 !important; background: transparent !important; border-color: #ddd !important; }
@@ -392,7 +445,7 @@ const printElement = (elId, title) => {
     @media print { @page { margin: 14mm; size: auto; } body { padding: 0; } }
   `;
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title || "Print"}</title><style>${css}</style></head><body>${el.outerHTML}<script>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escHtml(title || "Print")}</title><style>${css}</style></head><body>${el.outerHTML}<script>
     (function(){
       function go(){ try { window.focus(); } catch(e){} try { window.print(); } catch(e){} }
       window.onafterprint = function(){ setTimeout(function(){ try { window.close(); } catch(e){} }, 300); };
@@ -436,7 +489,7 @@ function Modal({ open, onClose, title, children }) {
   if (!open) return null;
   return (
     <div className="no-print-modal-overlay" onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(10px)",
+      position: "fixed", inset: 0, background: "var(--scrim)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
       display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
@@ -447,10 +500,10 @@ function Modal({ open, onClose, title, children }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ margin: 0, fontSize: 19, fontWeight: 600 }}>{title}</h3>
           <button onClick={onClose} aria-label="Close dialog" style={{
-            background: "rgba(255,255,255,0.05)", border: "none", color: C.textMuted,
+            background: "rgba(var(--ink-rgb),0.05)", border: "none", color: C.textMuted,
             width: 30, height: 30, borderRadius: 8, cursor: "pointer", fontSize: 14,
             display: "flex", alignItems: "center", justifyContent: "center",
-          }}>✖</button>
+          }}><Icon name="x" size={14} /></button>
         </div>
         {children}
       </div>
@@ -460,9 +513,9 @@ function Modal({ open, onClose, title, children }) {
 
 const inpStyle = {
   width: "100%", boxSizing: "border-box", padding: "11px 14px",
-  background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 9, color: "#fff", fontSize: 14, outline: "none",
-  fontFamily: "'Outfit',sans-serif", transition: "border-color 0.2s",
+  background: "var(--field-bg)", border: "1px solid var(--field-border)",
+  borderRadius: 9, color: "var(--ink)", fontSize: 14, outline: "none",
+  fontFamily: "'Space Grotesk',sans-serif", transition: "border-color 0.2s",
 };
 
 function Field({ label, children }) {
@@ -481,32 +534,114 @@ function Btn({ children, onClick, disabled, variant, style: s }) {
   const isPrimary = variant !== "secondary";
   const base = isPrimary
     ? {
-      background: disabled ? "rgba(var(--accent-rgb),0.15)" : "linear-gradient(135deg, var(--accent), var(--accent2))",
-      color: "#04231b",
-      boxShadow: disabled ? "none" : "0 6px 26px rgba(var(--accent-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.4)",
+      background: disabled ? "rgba(var(--pop-rgb),0.15)" : "linear-gradient(135deg, var(--pop), var(--pop2))",
+      color: "#fff",
+      boxShadow: disabled ? "none" : "0 6px 26px rgba(var(--pop-rgb),0.30), inset 0 1px 0 rgba(255,255,255,0.25)",
     }
     : {
-      background: "rgba(255,255,255,0.04)",
-      border: "1px solid rgba(255,255,255,0.08)",
-      color: "rgba(255,255,255,0.6)",
+      background: "rgba(var(--ink-rgb),0.04)",
+      border: "1px solid rgba(var(--ink-rgb),0.08)",
+      color: "rgba(var(--ink-rgb),0.6)",
     };
   return (
     <button onClick={onClick} disabled={disabled} className={isPrimary ? "btnp" : "btns"} style={{
       padding: "11px 24px", border: "none", borderRadius: 11, fontSize: 14, fontWeight: 700,
-      cursor: disabled ? "not-allowed" : "pointer", fontFamily: "'Outfit',sans-serif",
+      cursor: disabled ? "not-allowed" : "pointer", fontFamily: "'Space Grotesk',sans-serif",
       transition: "transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease, background 0.2s ease",
       opacity: disabled ? 0.5 : 1, ...base, ...s,
     }}>{children}</button>
   );
 }
 
-function StatCard({ label, amount, accent, gradient, delay = 0 }) {
+// Monochrome line-icon set (Lucide-style). Inherits color via currentColor — no emoji in-product.
+const ICON_PATHS = {
+  "trending-up": <><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></>,
+  "trending-down": <><polyline points="22 17 13.5 8.5 8.5 13.5 2 7" /><polyline points="16 17 22 17 22 11" /></>,
+  award: <><circle cx="12" cy="8" r="6" /><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11" /></>,
+  star: <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26" />,
+  flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />,
+  "file-text": <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>,
+  alert: <><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
+  pie: <><path d="M21.21 15.89A10 10 0 1 1 8 2.83" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></>,
+  briefcase: <><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></>,
+  tag: <><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r=".5" fill="currentColor" /></>,
+  inbox: <><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
+  x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
+  edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
+  download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>,
+  upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>,
+  printer: <><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></>,
+  share: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></>,
+  sparkles: <path d="M9.94 14.06A2 2 0 0 0 8.5 12.6l-5.1-1.32a.5.5 0 0 1 0-.96L8.5 9a2 2 0 0 0 1.44-1.44l1.32-5.1a.5.5 0 0 1 .96 0l1.32 5.1A2 2 0 0 0 15 9l5.1 1.32a.5.5 0 0 1 0 .96L15 12.6a2 2 0 0 0-1.44 1.46l-1.32 5.1a.5.5 0 0 1-.96 0z" />,
+  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  clock: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
+  check: <polyline points="20 6 9 17 4 12" />,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></>,
+  moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+};
+function Icon({ name, size = 18, stroke = 1.7, style }) {
+  const path = ICON_PATHS[name];
+  if (!path) return null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+      style={{ flex: "none", display: "inline-block", verticalAlign: "middle", ...style }}>
+      {path}
+    </svg>
+  );
+}
+
+// Light/dark switch — a pill toggle with a sliding thumb carrying the active icon.
+function ThemeToggle({ dark, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      role="switch"
+      aria-checked={dark}
+      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+      title={dark ? "Light mode" : "Dark mode"}
+      className="lift"
+      style={{
+        position: "relative", width: 60, height: 32, flex: "none", padding: 0,
+        borderRadius: 999, cursor: "pointer",
+        border: "1px solid var(--card-border)", background: "var(--surface2)",
+        transition: "background .3s ease, border-color .3s ease",
+      }}
+    >
+      <span style={{
+        position: "absolute", top: "50%", left: 9, transform: "translateY(-50%)",
+        color: "var(--text-muted)", opacity: dark ? 0.55 : 0, transition: "opacity .3s ease",
+      }}>
+        <Icon name="sun" size={13} />
+      </span>
+      <span style={{
+        position: "absolute", top: "50%", right: 9, transform: "translateY(-50%)",
+        color: "var(--text-muted)", opacity: dark ? 0 : 0.55, transition: "opacity .3s ease",
+      }}>
+        <Icon name="moon" size={13} />
+      </span>
+      <span style={{
+        position: "absolute", top: 3, left: dark ? 31 : 3, width: 24, height: 24, borderRadius: "50%",
+        background: "var(--accent)", color: "var(--accent-fg)", display: "grid", placeItems: "center",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.28)",
+        transition: "left .28s cubic-bezier(.2,.8,.2,1), background .3s ease, color .3s ease",
+      }}>
+        <Icon name={dark ? "moon" : "sun"} size={13} />
+      </span>
+    </button>
+  );
+}
+
+function StatCard({ label, amount, accent, gradient, delay = 0, delta = null }) {
   const animated = useCountUp(typeof amount === "number" ? amount : 0);
+  const up = typeof delta === "number" && delta >= 0;
   return (
     <div className="lift rise" style={{
       background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 16,
       padding: "20px 24px", flex: "1 1 180px", minWidth: 155, position: "relative", overflow: "hidden",
-      boxShadow: "0 14px 34px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04)",
+      boxShadow: "0 14px 34px rgba(var(--ink-rgb),0.07), inset 0 1px 0 rgba(var(--ink-rgb),0.04)",
       animationDelay: delay + "ms",
     }}>
       <div style={{
@@ -517,28 +652,64 @@ function StatCard({ label, amount, accent, gradient, delay = 0 }) {
         fontSize: 11, color: C.textDim, letterSpacing: 1, textTransform: "uppercase",
         marginBottom: 8, fontFamily: "'JetBrains Mono',monospace",
       }}>{label}</div>
-      <div style={{
-        fontSize: 27, fontWeight: 700, letterSpacing: -0.5, fontFamily: "'Outfit',sans-serif",
-        fontVariantNumeric: "tabular-nums",
-        ...(gradient ? {
-          background: "linear-gradient(120deg, #fff 10%, var(--accent) 70%, var(--accent2))",
-          WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
-        } : {}),
-      }}>{fmt(animated)}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <div style={{
+          fontSize: 27, fontWeight: 700, letterSpacing: -0.5, fontFamily: "'Space Grotesk',sans-serif",
+          fontVariantNumeric: "tabular-nums",
+          ...(gradient ? {
+            background: "linear-gradient(120deg, var(--ink) 25%, var(--accent3) 80%, var(--accent2))",
+            WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
+          } : {}),
+        }}>{fmt(animated)}</div>
+        {typeof delta === "number" && (
+          <span className="delta-pill" style={{
+            background: up ? "rgba(22,163,74,0.12)" : "rgba(255,107,107,0.12)",
+            color: up ? "#16A34A" : "#ff6b6b",
+          }} title="vs. last month">
+            {up ? "▲" : "▼"} {Math.abs(delta)}%
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
-function RevenueTrend({ records, delay = 0 }) {
+// Brutalist checkbox: organic blob shape, hard offset shadow, splash tick. Themed to --pop.
+// Renders as a <span> (not <label>) so it can be safely nested inside an outer <label>.
+function BrutalCheck({ checked, onChange, size = 17, ariaLabel }) {
+  return (
+    <span className="brutal-check" style={{ fontSize: size }}>
+      <input type="checkbox" checked={checked} onChange={onChange} aria-label={ariaLabel} />
+      <span className="bmk" />
+    </span>
+  );
+}
+
+function RevenueTrend({ records, delay = 0, profitOf = null }) {
   const { terms } = useConfig();
+  const [gran, setGran] = useState("daily");
+  const [metric, setMetric] = useState("revenue");
+  const [hover, setHover] = useState(null);
+  const isProfit = metric === "profit" && !!profitOf;
+
   const series = useMemo(() => {
-    const byDate = {};
-    records.forEach((r) => { byDate[r.date] = (byDate[r.date] || 0) + toBase(r.amount, r.currency); });
-    return Object.keys(byDate).sort().slice(-30).map((d) => ({ date: d, value: byDate[d] }));
-  }, [records]);
+    const bucket = {};
+    records.forEach((r) => {
+      let key, label;
+      if (gran === "yearly") { key = r.date.slice(0, 4); label = key; }
+      else if (gran === "weekly") { key = weekKey(r.date); label = "Week of " + shortDate(key); }
+      else { key = r.date; label = shortDate(r.date); }
+      if (!bucket[key]) bucket[key] = { value: 0, label };
+      bucket[key].value += isProfit ? (Number(profitOf(r)) || 0) : toBase(r.amount, r.currency);
+    });
+    const keys = Object.keys(bucket).sort();
+    const sliced = gran === "yearly" ? keys.slice(-10) : gran === "weekly" ? keys.slice(-26) : keys.slice(-30);
+    return sliced.map((k) => ({ key: k, value: bucket[k].value, label: bucket[k].label }));
+  }, [records, gran, isProfit]);
 
   const lineRef = useRef(null);
   const W = 1000, H = 170, pad = 14;
+  const unitLabel = gran === "yearly" ? "year" : gran === "weekly" ? "week" : "day";
 
   const geom = useMemo(() => {
     if (series.length === 0) return null;
@@ -555,8 +726,10 @@ function RevenueTrend({ records, delay = 0 }) {
       d += " C" + cx + "," + y0 + " " + cx + "," + y1 + " " + x1 + "," + y1;
     }
     if (pts.length === 1) d += " L" + (pts[0][0] + 0.1) + "," + pts[0][1];
-    return { line: d, fill: d + ` L${W - pad},${H} L${pad},${H} Z`, last: pts[pts.length - 1], max, total: vals.reduce((a, b) => a + b, 0) };
+    return { line: d, fill: d + ` L${W - pad},${H} L${pad},${H} Z`, last: pts[pts.length - 1], pts, max, total: vals.reduce((a, b) => a + b, 0) };
   }, [series]);
+
+  useEffect(() => { setHover(null); }, [gran]);
 
   useEffect(() => {
     const el = lineRef.current;
@@ -571,44 +744,110 @@ function RevenueTrend({ records, delay = 0 }) {
     if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(() => { el.style.strokeDashoffset = 0; });
   }, [geom]);
 
+  const onMove = (e) => {
+    if (!geom) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width;
+    const n = series.length;
+    let i = n <= 1 ? 0 : Math.round(((relX * W - pad) / (W - pad * 2)) * (n - 1));
+    i = Math.max(0, Math.min(n - 1, i));
+    const pt = geom.pts[i];
+    setHover({ i, x: pt[0], y: pt[1], value: series[i].value, label: series[i].label });
+  };
+
+  const grans = [{ k: "daily", l: "Daily" }, { k: "weekly", l: "Weekly" }, { k: "yearly", l: "Yearly" }];
+  const metrics = [{ k: "revenue", l: "Revenue" }, { k: "profit", l: "Profit" }];
+  // Profit line is green; revenue keeps the brand "pop" orange.
+  const lineC = isProfit ? "#22C55E" : "var(--pop)";
+  const lineC2 = isProfit ? "#16A34A" : "var(--pop2)";
+  // Shared segmented-control button style (used by both toggles so they align identically).
+  const segBtn = (active, activeColor) => ({
+    padding: "5px 12px", borderRadius: 7, border: "none", cursor: "pointer",
+    fontSize: 12, fontWeight: 600, fontFamily: "'Space Grotesk',sans-serif",
+    background: active ? "var(--card)" : "transparent",
+    color: active ? activeColor : "var(--text-dim)",
+    boxShadow: active ? "0 1px 4px rgba(var(--ink-rgb),0.12)" : "none",
+    transition: "all 0.18s",
+  });
+  const segWrap = { display: "inline-flex", background: "rgba(var(--ink-rgb),0.05)", borderRadius: 9, padding: 3, gap: 2 };
+
   return (
     <div className="rise lift" style={{
       background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 18, padding: "20px 22px 8px",
       marginBottom: 28, position: "relative", overflow: "hidden", animationDelay: delay + "ms",
-      boxShadow: "0 18px 44px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.05)",
+      boxShadow: "0 18px 44px rgba(var(--ink-rgb),0.08), inset 0 1px 0 rgba(var(--ink-rgb),0.05)",
     }}>
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none",
         background: "radial-gradient(420px 200px at 6% -30%, rgba(var(--accent-rgb),0.12), transparent 70%)" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", position: "relative", zIndex: 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", position: "relative", zIndex: 1, gap: 14, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.4, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>Revenue trend</div>
-          <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>
-            {series.length === 0 ? `No ${terms.revenue.many.toLowerCase()} recorded yet` : `Across ${series.length} active ${series.length === 1 ? "day" : "days"}`}
+          <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.4, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>{isProfit ? "Profit trend" : "Revenue trend"}</div>
+          {geom && (
+            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.05, marginTop: 6, fontFamily: "'Space Grotesk',sans-serif", fontVariantNumeric: "tabular-nums", color: isProfit ? "#22C55E" : "var(--ink)" }}>{fmt(geom.total)}</div>
+          )}
+          <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: geom ? 5 : 4 }}>
+            {series.length === 0 ? `No ${terms.revenue.many.toLowerCase()} recorded yet` : `Across ${series.length} active ${series.length === 1 ? unitLabel : unitLabel + "s"}`}
           </div>
         </div>
-        {geom && <div style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(geom.total)}</div>}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
+          {profitOf && (
+            <div style={segWrap}>
+              {metrics.map((m) => (
+                <button key={m.k} onClick={() => setMetric(m.k)} style={segBtn(metric === m.k, m.k === "profit" ? "#22C55E" : "var(--pop)")}>{m.l}</button>
+              ))}
+            </div>
+          )}
+          <div style={segWrap}>
+            {grans.map((g) => (
+              <button key={g.k} onClick={() => setGran(g.k)} style={segBtn(gran === g.k, "var(--pop)")}>{g.l}</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {geom ? (
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H} style={{ marginTop: 6, display: "block" }} aria-label="Revenue trend line chart">
-          <defs>
-            <linearGradient id="rtfill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent2)" stopOpacity="0.34" />
-              <stop offset="100%" stopColor="var(--accent2)" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="rtstroke" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="var(--accent2)" />
-              <stop offset="100%" stopColor="var(--accent)" />
-            </linearGradient>
-          </defs>
-          <path d={geom.fill} fill="url(#rtfill)" />
-          <path ref={lineRef} d={geom.line} fill="none" stroke="url(#rtstroke)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill="var(--accent)" />
-          <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill="var(--accent)" opacity="0.4">
-            <animate attributeName="r" values="4.5;11;4.5" dur="2.2s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0.4;0;0.4" dur="2.2s" repeatCount="indefinite" />
-          </circle>
-        </svg>
+        <div style={{ position: "relative", marginTop: 6 }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H} style={{ display: "block", cursor: "crosshair" }} aria-label="Revenue trend line chart">
+            <defs>
+              <linearGradient id="rtfill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={lineC} stopOpacity="0.28" />
+                <stop offset="100%" stopColor={lineC} stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="rtstroke" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor={lineC2} />
+                <stop offset="100%" stopColor={lineC} />
+              </linearGradient>
+            </defs>
+            <path d={geom.fill} fill="url(#rtfill)" />
+            <path ref={lineRef} d={geom.line} fill="none" stroke="url(#rtstroke)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            {hover ? (
+              <>
+                <line x1={hover.x} y1={pad} x2={hover.x} y2={H} stroke={lineC} strokeWidth="1" strokeDasharray="4 4" opacity="0.5" />
+                <circle cx={hover.x} cy={hover.y} r="5.5" fill={lineC} stroke="#fff" strokeWidth="2.5" />
+              </>
+            ) : (
+              <>
+                <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill={lineC} />
+                <circle cx={geom.last[0]} cy={geom.last[1]} r="4.5" fill={lineC} opacity="0.4">
+                  <animate attributeName="r" values="4.5;11;4.5" dur="2.2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.4;0;0.4" dur="2.2s" repeatCount="indefinite" />
+                </circle>
+              </>
+            )}
+          </svg>
+          {hover && (
+            <div style={{
+              position: "absolute", left: `${(hover.x / W) * 100}%`, top: hover.y,
+              transform: `translate(${hover.x > W * 0.7 ? "-105%" : hover.x < W * 0.3 ? "5%" : "-50%"}, -130%)`,
+              background: "var(--ink)", color: "var(--accent-fg)", padding: "7px 11px", borderRadius: 9,
+              pointerEvents: "none", whiteSpace: "nowrap", zIndex: 2,
+              boxShadow: "0 8px 24px rgba(var(--ink-rgb),0.28)",
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(hover.value)}</div>
+              <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 1 }}>{hover.label}</div>
+            </div>
+          )}
+        </div>
       ) : (
         <div style={{ height: H, display: "flex", alignItems: "center", justifyContent: "center", color: C.textMuted, fontSize: 13 }}>
           {`Your revenue trend will appear here once you log ${terms.revenue.many.toLowerCase()}.`}
@@ -618,15 +857,23 @@ function RevenueTrend({ records, delay = 0 }) {
   );
 }
 
-function SplitRing({ total, agency, chatter, delay = 0 }) {
-  const creator = Math.max(0, total - agency - chatter);
-  const sum = agency + chatter + creator || 1;
+const ROLE_SEG_COLORS = ["#2563EB", "#0D9488", "#7C3AED", "#CA8A04", "#DB2777", "#0891B2"];
+function SplitRing({ total, agency, chatter, extras = [], chatterLabel = "Chatters", segments = null, subtitle = null, delay = 0 }) {
   const r = 52, circ = 2 * Math.PI * r;
-  const segs = [
-    { key: "creator", label: "Creators kept", val: creator, color: "#FBBF24" },
-    { key: "chatter", label: "Chatters", val: chatter, color: "#A78BFA" },
-    { key: "agency", label: "Agency (you)", val: agency, color: "var(--accent2)" },
-  ];
+  let segs;
+  if (segments) {
+    segs = segments.filter(Boolean).map((s, i) => ({ key: s.key || ("seg-" + i), label: s.label, val: Math.max(0, s.val || 0), color: s.color }));
+  } else {
+    const extrasSum = extras.reduce((a, e) => a + (e.amount || 0), 0);
+    const creator = Math.max(0, total - agency - chatter - extrasSum);
+    segs = [
+      { key: "creator", label: "Creators kept", val: creator, color: "#D8D8DC" },
+      ...extras.map((e, i) => ({ key: "role-" + i, label: e.name, val: e.amount || 0, color: ROLE_SEG_COLORS[i % ROLE_SEG_COLORS.length] })),
+      { key: "chatter", label: chatterLabel, val: chatter, color: "#F9A78C" },
+      { key: "agency", label: "Agency (you)", val: agency, color: "var(--pop)" },
+    ];
+  }
+  const sum = segs.reduce((a, s) => a + s.val, 0) || 1;
   const [shown, setShown] = useState(false);
   useEffect(() => { const t = setTimeout(() => setShown(true), 120 + delay); return () => clearTimeout(t); }, [delay]);
 
@@ -642,14 +889,14 @@ function SplitRing({ total, agency, chatter, delay = 0 }) {
   return (
     <div className="rise lift" style={{
       background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 18, padding: "20px 22px",
-      marginBottom: 28, animationDelay: delay + "ms",
-      boxShadow: "0 18px 44px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.05)",
+      marginBottom: 28, animationDelay: delay + "ms", display: "flex", flexDirection: "column",
+      boxShadow: "0 18px 44px rgba(var(--ink-rgb),0.08), inset 0 1px 0 rgba(var(--ink-rgb),0.05)",
     }}>
       <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.4, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace", marginBottom: 2 }}>Where the money goes</div>
-      <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>Split of {fmt(total)} gross</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
+      <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>{subtitle || `Split of ${fmt(total)} gross`}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 26, flexWrap: "wrap", flex: 1 }}>
         <svg width="128" height="128" viewBox="0 0 128 128" style={{ flex: "none" }} aria-label="Revenue split donut">
-          <circle cx="64" cy="64" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="15" />
+          <circle cx="64" cy="64" r={r} fill="none" stroke="rgba(var(--ink-rgb),0.06)" strokeWidth="15" />
           {arcs.map((a, i) => (
             <circle key={a.key} cx="64" cy="64" r={r} fill="none" stroke={a.color} strokeWidth="15" strokeLinecap="round"
               transform={`rotate(${a.rot} 64 64)`}
@@ -664,10 +911,113 @@ function SplitRing({ total, agency, chatter, delay = 0 }) {
               <span style={{ width: 9, height: 9, borderRadius: 3, background: a.color, flex: "none" }} />
               <span style={{ color: C.textDim, flex: 1 }}>{a.label}</span>
               <span style={{ fontFamily: "'JetBrains Mono',monospace", color: C.textMuted, fontSize: 12, marginRight: 8 }}>{pct(a.val)}%</span>
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: a.color }}>{fmt(a.val)}</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: "var(--ink)" }}>{fmt(a.val)}</span>
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityHeatmap({ records, weeks = 18, delay = 0 }) {
+  const { terms } = useConfig();
+  const { cols, max, activeDays, total, monthMarks } = useMemo(() => {
+    const byDate = {};
+    records.forEach((r) => { byDate[r.date] = (byDate[r.date] || 0) + toBase(r.amount, r.currency); });
+    const end = new Date(); end.setHours(0, 0, 0, 0);
+    const lastSat = new Date(end); lastSat.setDate(end.getDate() + (6 - end.getDay()));
+    const totalDays = weeks * 7;
+    const start = new Date(lastSat); start.setDate(lastSat.getDate() - (totalDays - 1));
+    const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    let max = 0, active = 0, total = 0;
+    const cells = [];
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const v = byDate[keyOf(d)] || 0;
+      if (v > 0) { active++; total += v; }
+      if (v > max) max = v;
+      cells.push({ d, value: v, future: d > end });
+    }
+    const cols = [], monthMarks = [];
+    let lastMonth = -1;
+    for (let c = 0; c < weeks; c++) {
+      cols.push(cells.slice(c * 7, c * 7 + 7));
+      const m = cells[c * 7].d.getMonth();
+      if (m !== lastMonth) {
+        if (monthMarks.length === 0 || c - monthMarks[monthMarks.length - 1].col >= 3)
+          monthMarks.push({ col: c, label: cells[c * 7].d.toLocaleString("default", { month: "short" }) });
+        lastMonth = m;
+      }
+    }
+    return { cols, max, activeDays: active, total, monthMarks };
+  }, [records, weeks]);
+
+  const levels = [0, 0.22, 0.42, 0.66, 1];
+  const level = (v) => (v <= 0 ? 0 : (() => { const r = v / (max || 1); return r > 0.66 ? 4 : r > 0.33 ? 3 : r > 0.12 ? 2 : 1; })());
+  const cellColor = (lv) => (lv === 0 ? "rgba(var(--ink-rgb),0.045)" : `rgba(var(--pop-rgb), ${levels[lv]})`);
+  const CELL = 13, GAP = 3, ROW = CELL + GAP;
+
+  return (
+    <div className="rise lift" style={{
+      background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 18, padding: "20px 22px",
+      marginBottom: 28, position: "relative", overflow: "hidden", animationDelay: delay + "ms",
+      boxShadow: "0 18px 44px rgba(var(--ink-rgb),0.08), inset 0 1px 0 rgba(var(--ink-rgb),0.05)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.4, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>Activity</div>
+          <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>
+            {activeDays === 0 ? `No ${terms.revenue.many.toLowerCase()} in the last ${weeks} weeks` : `${activeDays} active ${activeDays === 1 ? "day" : "days"} · last ${weeks} weeks`}
+          </div>
+        </div>
+        {total > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(total)}</div>}
+      </div>
+
+      <div className="mobile-scroll-x" style={{ overflowX: "auto", paddingBottom: 4 }}>
+        <div style={{ display: "inline-block", minWidth: "min-content" }}>
+          <div style={{ display: "flex", gap: GAP, marginLeft: 26, height: 16, position: "relative" }}>
+            {monthMarks.map((m) => (
+              <span key={m.col} style={{ position: "absolute", left: 26 + m.col * ROW - 26, fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{m.label}</span>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: GAP }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: GAP, marginRight: 6, width: 20 }}>
+              {["", "M", "", "W", "", "F", ""].map((lbl, i) => (
+                <span key={i} style={{ height: CELL, fontSize: 9, lineHeight: CELL + "px", color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{lbl}</span>
+              ))}
+            </div>
+            {cols.map((week, ci) => (
+              <div key={ci} style={{ display: "flex", flexDirection: "column", gap: GAP }}>
+                {week.map((cell, ri) => {
+                  const lv = level(cell.value);
+                  return (
+                    <div
+                      key={ri}
+                      title={cell.future ? "" : `${cell.d.toLocaleDateString("en-GB")} · ${cell.value > 0 ? fmt(cell.value) : "no " + terms.revenue.many.toLowerCase()}`}
+                      style={{
+                        width: CELL, height: CELL, borderRadius: 3,
+                        background: cell.future ? "transparent" : cellColor(lv),
+                        boxShadow: lv >= 3 ? "0 0 8px rgba(var(--pop-rgb),0.40)" : "none",
+                        opacity: cell.future ? 0 : 1,
+                        animation: "fadeIn .4s ease backwards",
+                        animationDelay: (delay + (ci * 7 + ri) * 5) + "ms",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 12, fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
+        <span>Less</span>
+        {[0, 1, 2, 3, 4].map((lv) => (
+          <span key={lv} style={{ width: 11, height: 11, borderRadius: 3, background: cellColor(lv) }} />
+        ))}
+        <span>More</span>
       </div>
     </div>
   );
@@ -689,7 +1039,14 @@ function EmptyState({ icon, text, sub, action }) {
       textAlign: "center", padding: "48px 24px", color: C.textMuted,
       border: "1px dashed " + C.cardBorder, borderRadius: 16,
     }}>
-      {icon && <div style={{ fontSize: 36, marginBottom: 12 }}>{icon}</div>}
+      {icon && (
+        <div style={{
+          width: 52, height: 52, borderRadius: 14, margin: "0 auto 14px", display: "grid", placeItems: "center",
+          background: "rgba(var(--ink-rgb),0.04)", border: "1px solid " + C.cardBorder, color: C.textDim,
+        }}>
+          <Icon name={icon} size={24} stroke={1.6} />
+        </div>
+      )}
       <div style={{ fontSize: 15, marginBottom: 6, color: C.textDim }}>{text}</div>
       {sub && <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>{sub}</div>}
       {action}
@@ -697,41 +1054,70 @@ function EmptyState({ icon, text, sub, action }) {
   );
 }
 
-function Avatar({ name, size }) {
+const CLIENT_COLORS = [
+  "#F35627", "#2563EB", "#16A34A", "#7C3AED", "#0891B2",
+  "#DB2777", "#CA8A04", "#475569", "#DC2626", "#0D9488",
+];
+
+// A client's avatar color: explicit choice if set, else a stable color derived from its name.
+const clientColor = (cl) => {
+  if (!cl) return CLIENT_COLORS[0];
+  if (cl.color) return cl.color;
+  const n = cl.name || "A";
+  let h = 0;
+  for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
+  return CLIENT_COLORS[h % CLIENT_COLORS.length];
+};
+
+function Avatar({ name, size, color }) {
   const s = size || 36;
-  const h = ((name || "A").charCodeAt(0) * 7) % 360;
+  const l = 22 + (((name || "A").charCodeAt(0) * 7) % 12);
+  const bg = color
+    ? "linear-gradient(140deg, " + color + ", " + darken(color, 0.2) + ")"
+    : "linear-gradient(140deg, hsl(0,0%," + (l + 8) + "%), hsl(0,0%," + Math.max(l - 6, 10) + "%))";
   return (
     <div style={{
-      width: s, height: s, borderRadius: s * 0.28, flexShrink: 0,
-      background: "linear-gradient(135deg, hsl(" + h + ",50%,42%), hsl(" + (h + 25) + ",40%,32%))",
+      width: s, height: s, borderRadius: s * 0.32, flexShrink: 0,
+      background: bg,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: s * 0.42, fontWeight: 700, color: "#fff",
+      fontSize: s * 0.4, fontWeight: 700, color: "#fff", letterSpacing: 0.3,
+      boxShadow: "0 2px 6px rgba(var(--ink-rgb),0.18), inset 0 1px 0 rgba(255,255,255,0.14)",
+      border: "1px solid rgba(255,255,255,0.06)",
     }}>{(name || "?")[0].toUpperCase()}</div>
   );
 }
 
-function TabBar({ active, onChange }) {
+function TabBar({ active, onChange, onSettings }) {
   const { terms } = useConfig();
   const tabs = [
     { key: "Dashboard", label: "Dashboard" },
     { key: "Add Sales", label: "Add " + terms.revenue.one },
     { key: "Clients", label: terms.client.many },
+    { key: "Invoices", label: "Invoices" },
     { key: "History", label: "History" },
   ];
   return (
     <div className="no-print" style={{
       display: "flex", gap: 10, marginBottom: 28, borderBottom: "1px solid var(--card-border)",
-      paddingBottom: 12, overflowX: "auto",
+      paddingBottom: 12, overflowX: "auto", alignItems: "center",
     }}>
       {tabs.map((t) => (
         <button key={t.key} onClick={() => onChange(t.key)} style={{
-          background: active === t.key ? "var(--accent-dim)" : "transparent",
-          border: "1px solid " + (active === t.key ? "var(--accent-border)" : "transparent"),
-          padding: "8px 16px", borderRadius: 10, color: active === t.key ? "var(--accent)" : "var(--text-dim)",
+          background: active === t.key ? "var(--pop-dim)" : "transparent",
+          border: "1px solid " + (active === t.key ? "var(--pop-border)" : "transparent"),
+          padding: "8px 16px", borderRadius: 10, color: active === t.key ? "var(--pop)" : "var(--text-dim)",
           cursor: "pointer", fontSize: 14, fontWeight: 600, transition: "all 0.2s",
           whiteSpace: "nowrap",
         }}>{t.label}</button>
       ))}
+      <button onClick={onSettings} title="Settings" aria-label="Settings" style={{
+        marginLeft: "auto", background: "transparent", border: "1px solid transparent",
+        padding: "8px 16px", borderRadius: 10, color: "var(--text-dim)",
+        cursor: "pointer", fontSize: 14, fontWeight: 600, transition: "all 0.2s",
+        whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6,
+      }}>
+        <Icon name="settings" size={15} /><span className="mobile-hide">Settings</span>
+      </button>
     </div>
   );
 }
@@ -770,12 +1156,12 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose, currency }) {
           ) : (
             <div style={{
               width: 32, height: 32, borderRadius: 9, display: "grid", placeItems: "center",
-              background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b",
+              background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "var(--accent-fg)",
               fontWeight: 800, fontSize: 17,
             }}>{(business.name || "?").charAt(0).toUpperCase()}</div>
           )}
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{business.name}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{business.name}</div>
             <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.8 }}>EARNINGS REPORT</div>
           </div>
           <div style={{ marginLeft: "auto", fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{date}</div>
@@ -785,7 +1171,7 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose, currency }) {
           <div>
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: C.textDim, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 }}>{terms.staff.one}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>{list[0].name}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)" }}>{list[0].name}</div>
               <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{clientNameStr}</div>
             </div>
             <div style={{
@@ -808,7 +1194,7 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose, currency }) {
                   padding: "10px 14px", background: "rgba(251,191,36,0.04)", borderRadius: 10,
                   border: "1px solid rgba(251,191,36,0.06)",
                 }}>
-                  <span style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}>{c.name}</span>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>{c.name}</span>
                   <span style={{ fontWeight: 700, fontSize: 16, color: C.earn, fontFamily: "'JetBrains Mono',monospace" }}>{fmtIn(c.chatterCut, currency)}</span>
                 </div>
               ))}
@@ -833,7 +1219,7 @@ function ShareCard({ chatters: list, clientNameStr, date, onClose, currency }) {
   );
 }
 
-function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDonePrinting, onOpenSettings }) {
+function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDonePrinting, onOpenSettings, invoices = [], onUpsertInvoice }) {
   const { business, locale, invoice } = useConfig();
   if (!record || !client) return null;
 
@@ -846,7 +1232,7 @@ function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDone
     return (
       <Modal open={true} onClose={onClose} title="Invoice Preview">
         <div style={{ textAlign: "center", padding: "26px 18px 10px" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🧾</div>
+          <div style={{ width: 56, height: 56, borderRadius: 15, margin: "0 auto 14px", display: "grid", placeItems: "center", background: "rgba(var(--ink-rgb),0.04)", border: "1px solid " + C.cardBorder, color: C.textDim }}><Icon name="file-text" size={26} stroke={1.6} /></div>
           <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Add your invoice details first</h3>
           <p style={{ fontSize: 13.5, color: C.textDim, lineHeight: 1.5, maxWidth: 380, margin: "0 auto 4px" }}>
             Your invoices are missing your {missing.join(" and ")}. Add them in Settings so the invoices you send look complete and professional.
@@ -878,11 +1264,31 @@ function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDone
     }
   }, [isPrinting, invNo, onDonePrinting]);
 
+  // Email-this-invoice flow: opens a pre-filled draft in the user's own mail app (no backend).
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const openEmailDraft = () => {
+    if (!emailTo.trim()) return;
+    const subject = `Invoice ${invNo} from ${business.name}`;
+    const body = [
+      "Hi,",
+      "",
+      `Here is invoice ${invNo} for ${fmtIn(total, invCur)}, dated ${dateStr}${invoice.dueDays ? ` (due ${dueStr})` : ""}.`,
+      "",
+      "Thanks,",
+      business.name,
+    ].join("\n");
+    const url = `mailto:${encodeURIComponent(emailTo.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    if (typeof window !== "undefined") window.location.href = url;
+    // Opening the draft marks the invoice Sent (you can change it back in the Invoices tab).
+    onUpsertInvoice?.({ number: invNo, clientName: client.name, amount: total, currency: invCur, issueDate: record.date, dueDate: due.toISOString().slice(0, 10), status: "sent" });
+  };
+
   return (
     <Modal open={true} onClose={onClose} title="Invoice Preview">
       <div id="invoice-printable" style={{
         background: "#fff", color: "#000", padding: "40px", borderRadius: 4,
-        fontFamily: "'Inter', sans-serif", width: "100%", maxWidth: "760px", margin: "0 auto",
+        fontFamily: "'Plus Jakarta Sans', sans-serif", width: "100%", maxWidth: "760px", margin: "0 auto",
         boxShadow: "0 0 20px rgba(0,0,0,0.1)", minHeight: "1000px", position: "relative",
         boxSizing: "border-box"
       }}>
@@ -977,9 +1383,51 @@ function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDone
         </div>
       </div>
 
-      <div className="no-print" style={{ display: "flex", gap: 8, marginTop: 18 }}>
-        <Btn variant="secondary" onClick={onClose} style={{ flex: 1 }}>Close</Btn>
-        <Btn onClick={() => printElement("invoice-printable", "Invoice_" + invNo.replace(/\//g, "_"))} style={{ flex: 1 }}>📥 Save as PDF / Print</Btn>
+      {onUpsertInvoice && (() => {
+        const stored = invoices.find((i) => i.number === invNo);
+        const cur = stored ? stored.status : null;
+        const setStatus = (status) => onUpsertInvoice({
+          number: invNo, clientName: client.name, amount: total, currency: invCur,
+          issueDate: record.date, dueDate: due.toISOString().slice(0, 10), status,
+        });
+        const opts = [{ k: "draft", l: "Draft", c: "#64748B" }, { k: "sent", l: "Sent", c: "#2563EB" }, { k: "paid", l: "Paid", c: "#16A34A" }];
+        return (
+          <div className="no-print" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: C.textDim, fontWeight: 600 }}>Status</span>
+            {opts.map((o) => (
+              <button key={o.k} onClick={() => setStatus(o.k)} style={{
+                padding: "6px 14px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                border: "1px solid " + (cur === o.k ? o.c : "rgba(var(--ink-rgb),0.1)"),
+                background: cur === o.k ? o.c : "transparent", color: cur === o.k ? "#fff" : C.textDim,
+              }}>{o.l}</button>
+            ))}
+            {!cur && <span style={{ fontSize: 11.5, color: C.textMuted }}>Pick a status to start tracking this invoice</span>}
+          </div>
+        );
+      })()}
+
+      <div className="no-print" style={{ marginTop: 14 }}>
+        {emailOpen ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <Field label="Send invoice to">
+              <input type="email" placeholder="client@email.com" value={emailTo} autoFocus
+                onChange={(e) => setEmailTo(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") openEmailDraft(); }}
+                style={inpStyle} />
+            </Field>
+            <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.5 }}>Opens a draft in your email app. Save the PDF first (if you want to attach it), then send.</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="secondary" onClick={() => setEmailOpen(false)} style={{ flex: 1 }}>Back</Btn>
+              <Btn onClick={openEmailDraft} disabled={!emailTo.trim()} style={{ flex: 1 }}>Open email draft</Btn>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="secondary" onClick={onClose} style={{ flex: 1 }}>Close</Btn>
+            <Btn variant="secondary" onClick={() => setEmailOpen(true)} style={{ flex: 1 }}><Icon name="share" size={14} style={{ marginRight: 6 }} />Email</Btn>
+            <Btn onClick={() => printElement("invoice-printable", "Invoice_" + invNo.replace(/\//g, "_"))} style={{ flex: 1 }}><Icon name="download" size={14} style={{ marginRight: 6 }} />PDF</Btn>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -1025,7 +1473,7 @@ function TierEditor({ tiers, onChange, symbol }) {
               style={{ ...inpStyle, padding: "7px 18px 7px 8px", fontSize: 12 }} />
             <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 11 }}>%</span>
           </div>
-          <button type="button" onClick={() => removeRow(i)} aria-label="Remove tier" style={{ background: "none", border: "none", color: "rgba(239,68,68,0.5)", cursor: "pointer", fontSize: 13, padding: 2, visibility: rows.length > 1 ? "visible" : "hidden" }}>✖</button>
+          <button type="button" onClick={() => removeRow(i)} aria-label="Remove tier" style={{ background: "none", border: "none", color: "rgba(239,68,68,0.5)", cursor: "pointer", fontSize: 13, padding: 2, visibility: rows.length > 1 ? "visible" : "hidden" }}><Icon name="x" size={14} /></button>
         </div>
       ))}
       <button type="button" onClick={addRow} style={{ alignSelf: "flex-start", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", color: "var(--accent)", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>+ Tier</button>
@@ -1129,7 +1577,7 @@ function SettingsPanel({ initial, onClose, onSave }) {
             <h2 style={{ fontSize: 22, fontWeight: 700 }}>Settings</h2>
             <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 2 }}>Customize how the app is branded and worded for your agency.</div>
           </div>
-          <button onClick={onClose} aria-label="Close settings" style={{ background: "rgba(255,255,255,0.05)", border: "none", color: C.textMuted, width: 34, height: 34, borderRadius: 9, cursor: "pointer", fontSize: 15 }}>✖</button>
+          <button onClick={onClose} aria-label="Close settings" style={{ background: "rgba(var(--ink-rgb),0.05)", border: "none", color: C.textMuted, width: 34, height: 34, borderRadius: 9, cursor: "pointer", fontSize: 15 }}><Icon name="x" size={14} /></button>
         </div>
 
         <SettingsSection title="Business">
@@ -1137,20 +1585,10 @@ function SettingsPanel({ initial, onClose, onSave }) {
           <Field label="Tagline"><input style={inpStyle} value={d.business.tagline} onChange={(e) => setB("tagline", e.target.value)} /></Field>
           <Field label="Logo URL (blank = use initial letter)"><input style={inpStyle} value={d.business.logo} onChange={(e) => setB("logo", e.target.value)} placeholder="/logo.svg or https://..." /></Field>
           <Field label="Address (one line per row, shown on invoices)">
-            <textarea style={{ ...inpStyle, minHeight: 90, resize: "vertical", fontFamily: "'Outfit',sans-serif" }} value={addressStr} onChange={(e) => setB("address", e.target.value)} />
+            <textarea style={{ ...inpStyle, minHeight: 90, resize: "vertical", fontFamily: "'Space Grotesk',sans-serif" }} value={addressStr} onChange={(e) => setB("address", e.target.value)} />
           </Field>
         </SettingsSection>
 
-        <SettingsSection title="Branding">
-          <Field label="Accent color">
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input type="color" value={d.branding.accent} onChange={(e) => setBr("accent", e.target.value)}
-                style={{ width: 48, height: 38, padding: 0, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9, background: "none", cursor: "pointer" }} />
-              <input style={{ ...inpStyle, fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase" }} value={d.branding.accent} onChange={(e) => setBr("accent", e.target.value)} />
-            </div>
-            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>The whole app recolors to match. Lighter/darker shades are derived automatically.</div>
-          </Field>
-        </SettingsSection>
 
         <SettingsSection title="Terminology">
           <SettingsRow>
@@ -1182,8 +1620,8 @@ function SettingsPanel({ initial, onClose, onSave }) {
             <div style={half}><Field label="Tax rate (%)"><input type="number" step="0.1" style={inpStyle} value={(Number(d.locale.taxRate) || 0) * 100} onChange={(e) => setL("taxRate", (Number(e.target.value) || 0) / 100)} /></Field></div>
           </SettingsRow>
           <Field label="Tax line on invoice (optional)"><input style={inpStyle} value={d.locale.taxLine} onChange={(e) => setL("taxLine", e.target.value)} /></Field>
-          <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: C.textDim, cursor: "pointer", marginTop: 4 }}>
-            <input type="checkbox" checked={d.locale.amountInWords !== false} onChange={(e) => setL("amountInWords", e.target.checked)} style={{ width: 16, height: 16, accentColor: "var(--accent)" }} />
+          <label style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: C.textDim, cursor: "pointer", marginTop: 8 }}>
+            <BrutalCheck checked={d.locale.amountInWords !== false} onChange={(e) => setL("amountInWords", e.target.checked)} ariaLabel="Show amount in words on invoices" />
             Show amount in words on invoices
           </label>
         </SettingsSection>
@@ -1208,7 +1646,7 @@ function SettingsPanel({ initial, onClose, onSave }) {
                   style={inpStyle} />
               </div>
               <button type="button" aria-label="Remove currency" onClick={() => setD((s) => ({ ...s, currencies: s.currencies.filter((_, idx) => idx !== i) }))}
-                style={{ background: "none", border: "none", color: "rgba(239,68,68,0.55)", cursor: "pointer", fontSize: 14, padding: 4 }}>✖</button>
+                style={{ background: "none", border: "none", color: "rgba(239,68,68,0.55)", cursor: "pointer", fontSize: 14, padding: 4 }}><Icon name="x" size={14} /></button>
             </div>
           ))}
           <button type="button" onClick={() => setD((s) => ({ ...s, currencies: [...(s.currencies || []), { code: "", symbol: "", rate: 1 }] }))}
@@ -1241,14 +1679,14 @@ function SettingsPanel({ initial, onClose, onSave }) {
 
 function Onboarding({ onComplete }) {
   const [step, setStep] = useState(0);
-  const [type, setType] = useState("chatting");
+  const [type, setType] = useState("service");
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [symbol, setSymbol] = useState("$");
-  const [accent, setAccent] = useState("#5EEAD4");
-  const [terms, setTerms] = useState(AGENCY_PRESETS.chatting.terms);
-  const [agencyDefault, setAgencyDefault] = useState({ model: "percent", rate: AGENCY_PRESETS.chatting.commission.agencyShare });
-  const [staffDefault, setStaffDefault] = useState({ model: "percent", rate: AGENCY_PRESETS.chatting.commission.staffShare });
+  const [accent] = useState("#111111");
+  const [terms, setTerms] = useState(AGENCY_PRESETS.service.terms);
+  const [agencyDefault, setAgencyDefault] = useState({ model: "percent", rate: AGENCY_PRESETS.service.commission.agencyShare });
+  const [staffDefault, setStaffDefault] = useState({ model: "percent", rate: AGENCY_PRESETS.service.commission.staffShare });
   const preset = AGENCY_PRESETS[type];
 
   const pickType = (k) => {
@@ -1268,12 +1706,13 @@ function Onboarding({ onComplete }) {
     base.business.address = [];
     base.locale.currency = (currency.trim().toUpperCase()) || "USD";
     base.locale.currencySymbol = symbol || "$";
-    base.branding.accent = accent;
-    base.branding.accent2 = darken(accent, 0.12);
-    base.branding.accent3 = darken(accent, 0.22);
+    base.branding.accent = "#111111";
+    base.branding.accent2 = "#5C5C5C";
+    base.branding.accent3 = "#2E2E2E";
     base.terms = terms;
     base.commission.defaults = { agency: agencyDefault, staff: staffDefault };
     base.invoice.lineItemLabel = preset.lineItemLabel;
+    base.agencyType = type;
     base.onboarded = true;
     onComplete(base);
   };
@@ -1284,13 +1723,13 @@ function Onboarding({ onComplete }) {
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 2200, background: "var(--bg)",
-      backgroundImage: "radial-gradient(900px 520px at 50% -10%, rgba(var(--accent-rgb),0.16), transparent 60%), radial-gradient(700px 600px at 50% 120%, rgba(167,139,250,0.10), transparent 55%)",
+      backgroundImage: "radial-gradient(900px 520px at 50% -10%, rgba(var(--accent-rgb),0.08), transparent 60%), radial-gradient(700px 600px at 50% 120%, rgba(17,17,17,0.03), transparent 55%)",
       overflowY: "auto", animation: "fadeIn 0.25s ease",
     }}>
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "44px 22px 90px", minHeight: "100%" }}>
         {/* brand mark */}
         <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 30 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b", fontWeight: 800, fontSize: 20 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#fff", fontWeight: 800, fontSize: 20 }}>
             {(name || "A").charAt(0).toUpperCase()}
           </div>
           <div style={{ fontSize: 13, color: C.textDim, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1 }}>SET UP YOUR WORKSPACE</div>
@@ -1299,25 +1738,33 @@ function Onboarding({ onComplete }) {
         {/* progress dots */}
         <div style={{ display: "flex", gap: 6, marginBottom: 26 }}>
           {[0, 1, 2].map((i) => (
-            <div key={i} style={{ height: 4, flex: 1, borderRadius: 99, background: i <= step ? "var(--accent)" : "rgba(255,255,255,0.08)", transition: "background .3s" }} />
+            <div key={i} style={{ height: 4, flex: 1, borderRadius: 99, background: i <= step ? "var(--accent)" : "rgba(var(--ink-rgb),0.08)", transition: "background .3s" }} />
           ))}
         </div>
 
         {step === 0 && (
           <div className="rise">
             <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 6 }}>What kind of agency do you run?</h2>
-            <p style={{ fontSize: 13.5, color: C.textDim, marginBottom: 22 }}>This sets your wording and starting commission — you can change anything later.</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <p style={{ fontSize: 13.5, color: C.textDim, marginBottom: 22 }}>Pick the model that fits how you make money — you can change wording later.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
               {Object.entries(AGENCY_PRESETS).map(([k, p]) => (
                 <button key={k} onClick={() => pickType(k)} style={{
-                  textAlign: "left", padding: "18px 18px", borderRadius: 14, cursor: "pointer",
+                  textAlign: "left", padding: "20px 20px", borderRadius: 16, cursor: "pointer",
                   background: type === k ? "var(--accent-dim)" : C.card,
                   border: "1px solid " + (type === k ? "var(--accent-border)" : C.cardBorder),
-                  transition: "all .2s", color: "#fff",
+                  transition: "all .2s", color: "var(--ink)", display: "flex", gap: 16, alignItems: "flex-start",
                 }}>
-                  <div style={{ fontSize: 26, marginBottom: 8 }}>{p.icon}</div>
-                  <div style={{ fontSize: 15, fontWeight: 600 }}>{p.label}</div>
-                  <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 3 }}>{p.terms.staff.many} · {p.terms.revenue.many}</div>
+                  <div style={{
+                    width: 46, height: 46, borderRadius: 12, flex: "none", display: "grid", placeItems: "center",
+                    background: type === k ? "var(--accent)" : "rgba(var(--ink-rgb),0.05)",
+                    color: type === k ? "#fff" : C.textDim, transition: "all .2s",
+                  }}>
+                    <Icon name={p.icon} size={22} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{p.label}</div>
+                    <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: 5, lineHeight: 1.55 }}>{p.desc}</div>
+                  </div>
                 </button>
               ))}
             </div>
@@ -1333,12 +1780,6 @@ function Onboarding({ onComplete }) {
               <div style={half}><Field label="Currency code"><input style={inpStyle} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} placeholder="USD" /></Field></div>
               <div style={half}><Field label="Symbol"><input style={inpStyle} value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="$" /></Field></div>
             </div>
-            <Field label="Brand color">
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)} style={{ width: 48, height: 38, padding: 0, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9, background: "none", cursor: "pointer" }} />
-                <input style={{ ...inpStyle, fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase" }} value={accent} onChange={(e) => setAccent(e.target.value)} />
-              </div>
-            </Field>
           </div>
         )}
 
@@ -1351,7 +1792,7 @@ function Onboarding({ onComplete }) {
               <div style={half}><Field label="You call staff"><input style={inpStyle} value={terms.staff.many} onChange={(e) => setTerm("staff", "many", e.target.value)} /></Field></div>
             </div>
             <Field label="You call revenue items"><input style={inpStyle} value={terms.revenue.many} onChange={(e) => setTerm("revenue", "many", e.target.value)} /></Field>
-            <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "8px 0 16px" }} />
+            <div style={{ height: 1, background: "rgba(var(--ink-rgb),0.06)", margin: "8px 0 16px" }} />
             <div style={{ fontSize: 12, color: C.accent, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Default payout</div>
             <p style={{ fontSize: 12.5, color: C.textDim, marginBottom: 16 }}>How you and your {terms.staff.many.toLowerCase()} get paid — percentage, flat fee, tiered, or hourly. This is just the starting point for new {terms.client.many.toLowerCase()}; you can set it per {terms.client.one.toLowerCase()}.</p>
             <Field label={terms.agencyShareLabel}>
@@ -1385,6 +1826,754 @@ function Onboarding({ onComplete }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// TYPE 2 — MANAGEMENT AGENCY
+// You manage a brand/creator. They pay you (client payment in); you incur
+// operating expenses across categories. Profit = client payment − expenses.
+// ═══════════════════════════════════════════════════════════════════════
+// Palette for user-defined expense categories (assigned as new ones are added).
+const EXP_CAT_COLORS = ["#F9A78C", "#A78BFA", "#5EEAD4", "#94A3B8", "#FBBF24", "#60A5FA", "#F472B6", "#34D399"];
+// Sum an entry's expenses. New entries store { expenses: { [catId]: amount } }; older
+// ones used flat keys (chatting/designing/...) — support both so nothing breaks.
+const entryExpenses = (e) => {
+  if (e && e.expenses && typeof e.expenses === "object") return sumMoney(Object.values(e.expenses), (v) => Number(v) || 0);
+  return sumMoney(["chatting", "designing", "marketing", "other"], (k) => Number(e[k]) || 0);
+};
+const entryProfit = (e) => money((Number(e.payment) || 0) - entryExpenses(e));
+const mMonthKey = (d) => (d || "").slice(0, 7);
+const mMonthLabel = (m) => {
+  if (!m) return "";
+  const [y, mo] = m.split("-");
+  try { return new Date(Number(y), Number(mo) - 1, 1).toLocaleString(undefined, { month: "short", year: "numeric" }); }
+  catch { return m; }
+};
+const mDate = (s) => {
+  try { return new Date(s + "T00:00:00").toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "2-digit" }); }
+  catch { return s; }
+};
+
+// Shared "Insights" strip: auto-generated callout cards. Used by both agency modes.
+function InsightsPanel({ highlights = [], delay = 0 }) {
+  const items = highlights.filter(Boolean);
+  if (!items.length) return null;
+  return (
+    <div className="rise" style={{ marginBottom: 28, animationDelay: delay + "ms" }}>
+      <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.4, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace", marginBottom: 12 }}>Insights</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 12 }}>
+        {items.map((it, i) => (
+          <div key={i} className="lift" style={{
+            background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 14,
+            padding: "14px 16px", display: "flex", alignItems: "center", gap: 12,
+          }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 11, flex: "none", display: "grid", placeItems: "center",
+              background: it.tone === "good" ? "rgba(22,163,74,0.1)" : it.tone === "bad" ? "rgba(239,68,68,0.1)" : "rgba(var(--ink-rgb),0.05)",
+              color: it.tone === "good" ? "#16A34A" : it.tone === "bad" ? "#ef4444" : C.textDim,
+            }}>
+              <Icon name={it.icon} size={18} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 3, letterSpacing: 0.3, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>{it.label}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                color: it.tone === "good" ? C.earn : it.tone === "bad" ? "#ef4444" : "var(--ink)" }}>{it.value}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Shared invoice-status tracker (Draft / Sent / Paid / Overdue). Reads/writes data.invoices.
+function InvoicesPanel({ invoices = [], onUpsert, delay = 0 }) {
+  const list = Array.isArray(invoices) ? invoices : [];
+  const isOverdue = (inv) => inv.status === "sent" && inv.dueDate && inv.dueDate < today();
+  const effStatus = (inv) => (inv.status === "paid" ? "paid" : isOverdue(inv) ? "overdue" : (inv.status || "draft"));
+  const META = {
+    draft: { label: "Draft", color: "#64748B", bg: "rgba(100,116,139,0.14)" },
+    sent: { label: "Sent", color: "#2563EB", bg: "rgba(37,99,235,0.12)" },
+    paid: { label: "Paid", color: "#16A34A", bg: "rgba(22,163,74,0.12)" },
+    overdue: { label: "Overdue", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  };
+  const nextStatus = { draft: "sent", sent: "paid", paid: "draft", overdue: "paid" };
+  const sumBy = (pred) => list.filter(pred).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+  const outstanding = sumBy((i) => i.status === "sent");
+  const overdueAmt = sumBy((i) => isOverdue(i));
+  const paidAmt = sumBy((i) => i.status === "paid");
+  const sorted = [...list].sort((a, b) => ((a.issueDate || "") < (b.issueDate || "") ? 1 : -1));
+
+  if (!list.length) {
+    return <EmptyState icon="file-text" text="No invoices tracked yet" sub="Open an invoice and pick a status to start tracking it here" />;
+  }
+  const cols = "1.1fr 1fr 0.9fr 0.8fr 0.8fr 92px";
+  return (
+    <div className="rise" style={{ animationDelay: delay + "ms" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 22 }}>
+        <StatCard label="Outstanding" amount={outstanding} accent="rgba(37,99,235,0.1)" />
+        <StatCard label="Overdue" amount={overdueAmt} accent="rgba(239,68,68,0.1)" />
+        <StatCard label="Paid" amount={paidAmt} accent="rgba(22,163,74,0.1)" />
+      </div>
+      <div className="mobile-scroll-x" style={{ borderRadius: 14, overflow: "hidden", border: "1px solid " + C.cardBorder }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, minWidth: 640, padding: "10px 18px", background: "rgba(var(--accent-rgb),0.015)", fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.7, textTransform: "uppercase", gap: 6 }}>
+          <div>Invoice</div><div>Client</div><div>Amount</div><div>Issued</div><div>Due</div><div>Status</div>
+        </div>
+        {sorted.map((inv) => {
+          const st = effStatus(inv); const m = META[st];
+          return (
+            <div key={inv.number} className="recrow" style={{ display: "grid", gridTemplateColumns: cols, minWidth: 640, padding: "12px 18px", borderTop: "1px solid rgba(var(--accent-rgb),0.03)", fontSize: 13, alignItems: "center", gap: 6 }}>
+              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, color: C.textDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.number}</div>
+              <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.clientName}</div>
+              <div style={{ fontWeight: 700, color: C.accent }}>{fmtIn(inv.amount, inv.currency)}</div>
+              <div style={{ color: C.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{inv.issueDate ? shortDate(inv.issueDate) : "—"}</div>
+              <div style={{ color: isOverdue(inv) ? "#ef4444" : C.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{inv.dueDate ? shortDate(inv.dueDate) : "—"}</div>
+              <div>
+                <button onClick={() => onUpsert({ ...inv, status: nextStatus[st] })} title="Click to change status" style={{
+                  padding: "4px 11px", borderRadius: 99, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, background: m.bg, color: m.color,
+                }}>{m.label}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 10 }}>Tip: click a status pill to cycle Draft → Sent → Paid. Overdue is flagged automatically once the due date passes.</div>
+    </div>
+  );
+}
+
+function ManagementApp({ data, persist, config, onSettings, onInvoice, onExport, onImport }) {
+  const brands = Array.isArray(data.brands) ? data.brands : [];
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+  const cats = Array.isArray(config.expenseCategories) ? config.expenseCategories : [];
+  const [tab, setTab] = useState("Dashboard");
+  const importRef = useRef(null);
+
+  // Add-entry form
+  const [entryBrandId, setEntryBrandId] = useState("");
+  const [entryDate, setEntryDate] = useState(today());
+  const [payment, setPayment] = useState(""); // manual OVERRIDE for the client payment; blank = use the brand's calculated amount
+  const [brandRevenue, setBrandRevenue] = useState(""); // brand's revenue for the period (only for %-of-revenue brands)
+  const [entryHours, setEntryHours] = useState(""); // hours for any hourly-rate categories or brand payment
+  const [exp, setExp] = useState({}); // per-category manual OVERRIDE; blank = use the calculated amount
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  // Category management modal: null | "new" | categoryObject (editing)
+  const [catModal, setCatModal] = useState(null);
+  const [catName, setCatName] = useState("");
+  const [catColor, setCatColor] = useState(EXP_CAT_COLORS[0]);
+  const [catCost, setCatCost] = useState({ model: "percent", rate: 0.1 }); // how this spend is calculated
+  const curSymbol = (config.locale && config.locale.currencySymbol) || "$";
+  // Human summary of a category's cost model, e.g. "10% of payment", "$200 fixed", "$50 / hr".
+  const costDesc = (cost) => {
+    if (!cost) return "manual";
+    if (cost.model === "percent") return (+(Number(cost.rate || 0) * 100).toFixed(2)) + "% of payment";
+    if (cost.model === "flat") return fmt(cost.amount || 0) + " fixed";
+    if (cost.model === "hourly") return fmt(cost.rate || 0) + " / hr";
+    if (cost.model === "tiered") return "tiered %";
+    return "manual";
+  };
+  // Human summary of a brand's payment model (how the client pays us).
+  const payDesc = (p) => {
+    if (!p) return "manual payment";
+    if (p.model === "percent") return (+(Number(p.rate || 0) * 100).toFixed(2)) + "% of revenue";
+    if (p.model === "flat") return fmt(p.amount || 0) + " retainer";
+    if (p.model === "hourly") return fmt(p.rate || 0) + " / hr";
+    if (p.model === "tiered") return "tiered % of revenue";
+    return "manual payment";
+  };
+
+  // Brand modal: null | "new" | brandObject (editing)
+  const [brandModal, setBrandModal] = useState(null);
+  const [brandName, setBrandName] = useState("");
+  const [brandColor, setBrandColor] = useState(CLIENT_COLORS[0]);
+  const [brandPay, setBrandPay] = useState({ model: "flat", amount: 0 }); // payment structure
+  const [brandPayAuto, setBrandPayAuto] = useState(false); // false = type payment manually
+  const [confirmDel, setConfirmDel] = useState(null); // brand pending deletion
+  const [quickMsg, setQuickMsg] = useState(null); // retainer quick-log toast
+
+  const [monthFilter, setMonthFilter] = useState("all");
+
+  const brandLabel = (id) => (brands.find((b) => b.id === id) || {}).name || "—";
+  const brandOf = (id) => brands.find((b) => b.id === id) || null;
+
+  // The selected brand's payment structure drives the client payment (mirrors how categories
+  // drive expenses). % models bill a share of the brand's revenue; flat = retainer; hourly = rate × hours.
+  const selBrand = brandOf(entryBrandId);
+  const payModel = selBrand && selBrand.payment ? selBrand.payment : null;
+  const payIsPercent = !!payModel && (payModel.model === "percent" || payModel.model === "tiered");
+  const usesHours = cats.some((c) => c.cost && c.cost.model === "hourly") || (!!payModel && payModel.model === "hourly");
+  const computedPayment = payModel ? computeShare(payModel, payIsPercent ? (Number(brandRevenue) || 0) : 0, Number(entryHours) || 0) : null;
+  // A typed value overrides the calculated one for this entry.
+  const effPayment = (payment !== "" && payment !== undefined) ? money(Number(payment) || 0) : money(computedPayment || 0);
+  // Each spend is derived from its cost model applied to the (effective) payment and hours.
+  const computedFor = (c) => computeShare(c.cost, effPayment, Number(entryHours) || 0);
+  const effExp = (c) => (exp[c.id] !== undefined && exp[c.id] !== "" ? money(Number(exp[c.id]) || 0) : computedFor(c));
+  const liveExpenses = sumMoney(cats, (c) => effExp(c));
+  const liveProfit = money(effPayment - liveExpenses);
+
+  const saveEntry = () => {
+    if (!entryBrandId) return;
+    const expenses = {};
+    cats.forEach((c) => { const v = effExp(c); if (v) expenses[c.id] = v; });
+    const e = {
+      id: genId(), brandId: entryBrandId, date: entryDate,
+      payment: effPayment, expenses,
+    };
+    if (usesHours && (Number(entryHours) || 0)) e.hours = Number(entryHours) || 0;
+    if (payIsPercent && (Number(brandRevenue) || 0)) e.revenue = money(Number(brandRevenue) || 0);
+    persist({ ...data, entries: [e, ...entries] });
+    setPayment(""); setBrandRevenue(""); setEntryHours(""); setExp({});
+    setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1800);
+  };
+  const deleteEntry = (e) => persist({ ...data, entries: entries.filter((x) => x.id !== e.id) });
+
+  // Invoice the managed brand for the client payment (the management fee they owe us).
+  const invoiceEntry = (e) => onInvoice?.({
+    record: { id: e.id, date: e.date, amount: e.payment, hours: 0, currency: baseCode() },
+    client: { name: brandLabel(e.brandId) },
+    customAmount: e.payment,
+  });
+  // Invoice a brand for their total payments in the current period (dashboard aggregate).
+  const invoiceBrand = (b) => onInvoice?.({
+    record: { id: "agg-" + b.id, date: monthFilter === "all" ? today() : monthFilter + "-01", amount: b.pay, hours: 0, currency: baseCode() },
+    client: { name: b.name },
+    customAmount: b.pay,
+  });
+
+  // Expense categories live in config — persist them through the whole data object.
+  const saveCats = (next) => persist({ ...data, config: { ...config, expenseCategories: next } });
+  const openNewCat = () => { setCatName(""); setCatColor(EXP_CAT_COLORS[cats.length % EXP_CAT_COLORS.length]); setCatCost({ model: "percent", rate: 0.1 }); setCatModal("new"); };
+  const openEditCat = (c) => { setCatName(c.label); setCatColor(c.color || EXP_CAT_COLORS[0]); setCatCost(c.cost ? JSON.parse(JSON.stringify(c.cost)) : { model: "percent", rate: 0.1 }); setCatModal(c); };
+  const saveCat = () => {
+    const label = catName.trim();
+    if (!label) return;
+    if (catModal === "new") saveCats([...cats, { id: genId(), label, color: catColor, cost: catCost }]);
+    else saveCats(cats.map((c) => (c.id === catModal.id ? { ...c, label, color: catColor, cost: catCost } : c)));
+    setCatModal(null);
+  };
+  const deleteCat = (c) => saveCats(cats.filter((x) => x.id !== c.id));
+
+  const openNewBrand = () => { setBrandName(""); setBrandColor(CLIENT_COLORS[brands.length % CLIENT_COLORS.length]); setBrandPay({ model: "flat", amount: 0 }); setBrandPayAuto(false); setBrandModal("new"); };
+  const openEditBrand = (b) => { setBrandName(b.name); setBrandColor(b.color || CLIENT_COLORS[0]); setBrandPayAuto(!!b.payment); setBrandPay(b.payment ? JSON.parse(JSON.stringify(b.payment)) : { model: "flat", amount: 0 }); setBrandModal(b); };
+  const saveBrand = () => {
+    const name = brandName.trim();
+    if (!name) return;
+    const payment = brandPayAuto ? brandPay : null;
+    if (brandModal === "new") {
+      persist({ ...data, brands: [...brands, { id: genId(), name, color: brandColor, payment }] });
+    } else {
+      persist({ ...data, brands: brands.map((b) => (b.id === brandModal.id ? { ...b, name, color: brandColor, payment } : b)) });
+    }
+    setBrandModal(null);
+  };
+  const deleteBrand = (b) => {
+    persist({ ...data, brands: brands.filter((x) => x.id !== b.id), entries: entries.filter((e) => e.brandId !== b.id) });
+    setConfirmDel(null);
+  };
+
+  // ── Retainer quick-log ──
+  const thisMonthKey = today().slice(0, 7);
+  const loggedThisMonth = (brandId) => entries.some((e) => e.brandId === brandId && mMonthKey(e.date) === thisMonthKey);
+  // A flat-retainer brand with no hourly inputs can be logged in one click; everything else
+  // (percent/hourly payment, or hourly expense categories) needs the form to capture revenue/hours.
+  const canQuickLog = (b) => b.payment && b.payment.model === "flat" && !cats.some((c) => c.cost && c.cost.model === "hourly");
+  const quickLog = (b) => {
+    if (!canQuickLog(b)) {
+      // Open the entry form pre-filled with this brand and this month.
+      setEntryBrandId(b.id); setEntryDate(today()); setPayment(""); setBrandRevenue(""); setEntryHours(""); setExp({}); setTab("Add Entry");
+      return;
+    }
+    const pay = money(computeShare(b.payment, 0, 0));
+    const expenses = {};
+    cats.forEach((c) => { const v = money(computeShare(c.cost, pay, 0)); if (v) expenses[c.id] = v; });
+    persist({ ...data, entries: [{ id: genId(), brandId: b.id, date: today(), payment: pay, expenses }, ...entries] });
+    setQuickMsg(b.name + " · " + fmt(pay) + " logged for " + mMonthLabel(thisMonthKey));
+    setTimeout(() => setQuickMsg(null), 2800);
+  };
+
+  // Dashboard aggregates (respecting the month filter).
+  const months = [...new Set(entries.map((e) => mMonthKey(e.date)).filter(Boolean))].sort().reverse();
+  const shown = monthFilter === "all" ? entries : entries.filter((e) => mMonthKey(e.date) === monthFilter);
+  const totalPay = sumMoney(shown, (e) => e.payment);
+  const totalExp = sumMoney(shown, entryExpenses);
+  const profit = money(totalPay - totalExp);
+  const margin = totalPay > 0 ? (profit / totalPay) * 100 : 0;
+  const catTotals = cats.map((c) => ({ ...c, amount: sumMoney(shown, (e) => Number((e.expenses || {})[c.id]) || 0) }));
+  const perBrand = brands.map((b) => {
+    const es = shown.filter((e) => e.brandId === b.id);
+    const pay = sumMoney(es, (e) => e.payment);
+    const ex = sumMoney(es, entryExpenses);
+    return { ...b, pay, ex, profit: money(pay - ex), count: es.length };
+  }).sort((a, b) => b.profit - a.profit);
+  const sortedEntries = [...shown].sort((a, b) => (a.date < b.date ? 1 : -1));
+  // Map entries to the record shape the shared charts expect (amount = client payment).
+  const mgmtRecords = entries.map((e) => {
+    const expSum = e.expenses ? Object.values(e.expenses).reduce((a, v) => a + (Number(v) || 0), 0) : 0;
+    return { date: e.date, amount: e.payment, currency: baseCode(), profit: money(e.payment - expSum) };
+  });
+
+  // ── Analytics & insights ──
+  // Month-over-month deltas: latest month with data vs the one before it.
+  const monthsAsc = [...months].reverse();
+  const curM = monthsAsc[monthsAsc.length - 1], prevM = monthsAsc[monthsAsc.length - 2];
+  const deltaFor = (valFn) => {
+    if (!curM || !prevM) return null;
+    const cur = valFn(entries.filter((e) => mMonthKey(e.date) === curM));
+    const prev = valFn(entries.filter((e) => mMonthKey(e.date) === prevM));
+    if (prev <= 0) return null;
+    return Math.round(((cur - prev) / prev) * 100);
+  };
+  const showDelta = monthFilter === "all"; // deltas only make sense on the all-time view
+  const payDelta = showDelta ? deltaFor((es) => sumMoney(es, (e) => e.payment)) : null;
+  const expDelta = showDelta ? deltaFor((es) => sumMoney(es, entryExpenses)) : null;
+  const profitDelta = showDelta ? deltaFor((es) => money(sumMoney(es, (e) => e.payment) - sumMoney(es, entryExpenses))) : null;
+  // Auto-generated callouts for the current period.
+  const dayPay = {};
+  shown.forEach((e) => { dayPay[e.date] = (dayPay[e.date] || 0) + (Number(e.payment) || 0); });
+  const bestDay = Object.entries(dayPay).sort((a, b) => b[1] - a[1])[0];
+  const topBrand = perBrand.find((b) => b.count > 0);
+  const lowBrand = perBrand.filter((b) => b.pay > 0).map((b) => ({ ...b, margin: (b.profit / b.pay) * 100 })).sort((a, b) => a.margin - b.margin)[0];
+  const avgProfit = shown.length ? money(profit / shown.length) : 0;
+  const mgmtHighlights = [
+    payDelta != null && { icon: payDelta >= 0 ? "trending-up" : "trending-down", label: "Payments vs last month", value: (payDelta >= 0 ? "+" : "") + payDelta + "%", tone: payDelta >= 0 ? "good" : "bad" },
+    profitDelta != null && { icon: profitDelta >= 0 ? "trending-up" : "trending-down", label: "Profit vs last month", value: (profitDelta >= 0 ? "+" : "") + profitDelta + "%", tone: profitDelta >= 0 ? "good" : "bad" },
+    topBrand && { icon: "award", label: "Most profitable", value: topBrand.name + " · " + fmt(topBrand.profit), tone: "good" },
+    lowBrand && { icon: lowBrand.margin < 20 ? "alert" : "pie", label: "Lowest margin", value: lowBrand.name + " · " + lowBrand.margin.toFixed(0) + "%", tone: lowBrand.margin < 20 ? "bad" : "neutral" },
+    bestDay && { icon: "flame", label: "Best day", value: mDate(bestDay[0]) + " · " + fmt(bestDay[1]) },
+    shown.length > 0 && { icon: "file-text", label: "Avg profit / entry", value: fmt(avgProfit) },
+  ];
+
+  const NAV = ["Dashboard", "Add Entry", "Brands", "Categories", "Invoices", "History"];
+  const upsertInvoice = (inv) => {
+    const ilist = Array.isArray(data.invoices) ? data.invoices : [];
+    const idx = ilist.findIndex((x) => x.number === inv.number);
+    const next = idx >= 0 ? ilist.map((x, i) => (i === idx ? { ...x, ...inv } : x)) : [...ilist, { id: genId(), ...inv }];
+    persist({ ...data, invoices: next });
+  };
+
+  return (
+    <div style={{ animation: "slideUp 0.3s ease" }}>
+      {/* Nav */}
+      <div className="no-print" style={{
+        display: "flex", gap: 10, marginBottom: 28, borderBottom: "1px solid var(--card-border)",
+        paddingBottom: 12, overflowX: "auto", alignItems: "center",
+      }}>
+        {NAV.map((k) => (
+          <button key={k} onClick={() => setTab(k)} style={{
+            background: tab === k ? "var(--pop-dim)" : "transparent",
+            border: "1px solid " + (tab === k ? "var(--pop-border)" : "transparent"),
+            padding: "8px 16px", borderRadius: 10, color: tab === k ? "var(--pop)" : "var(--text-dim)",
+            cursor: "pointer", fontSize: 14, fontWeight: 600, transition: "all 0.2s", whiteSpace: "nowrap",
+          }}>{k}</button>
+        ))}
+        <button onClick={onSettings} title="Settings" aria-label="Settings" style={{
+          marginLeft: "auto", background: "transparent", border: "1px solid transparent",
+          padding: "8px 16px", borderRadius: 10, color: "var(--text-dim)", cursor: "pointer",
+          fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6,
+        }}><Icon name="settings" size={15} /><span className="mobile-hide">Settings</span></button>
+      </div>
+
+      {/* ═══ DASHBOARD ═══ */}
+      {tab === "Dashboard" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+            <h2 style={{ fontSize: 21, fontWeight: 700 }}>Profit overview</h2>
+            <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}
+              style={{ ...inpStyle, width: "auto", cursor: "pointer", background: "var(--surface)" }}>
+              <option value="all">All time</option>
+              {months.map((m) => <option key={m} value={m}>{mMonthLabel(m)}</option>)}
+            </select>
+          </div>
+
+          {entries.length === 0 ? (
+            <EmptyState icon="pie" text="No entries yet"
+              sub="Add a client payment and your expenses to see profit"
+              action={<Btn onClick={() => setTab(brands.length ? "Add Entry" : "Brands")}>{brands.length ? "Add an entry →" : "Add a brand first →"}</Btn>} />
+          ) : (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 22 }}>
+                <StatCard label="Client Payments" amount={totalPay} accent="rgba(var(--pop-rgb),0.08)" gradient delay={0} delta={payDelta} />
+                <StatCard label="Total Expenses" amount={totalExp} accent="rgba(var(--pop-rgb),0.06)" delay={70} delta={expDelta} />
+                <StatCard label="Net Profit" amount={profit} accent="rgba(var(--pop-rgb),0.06)" delay={140} delta={profitDelta} />
+                <div className="lift rise" style={{
+                  background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 16,
+                  padding: "20px 24px", flex: "1 1 180px", minWidth: 155,
+                }}>
+                  <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 0.6, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace", marginBottom: 8 }}>Profit Margin</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: profit >= 0 ? C.earn : "#ef4444" }}>{margin.toFixed(1)}%</div>
+                </div>
+              </div>
+
+              <InsightsPanel highlights={mgmtHighlights} delay={160} />
+
+              {/* Revenue trend + split donut */}
+              {totalPay > 0 ? (
+                <div className="dash-bento">
+                  <RevenueTrend records={mgmtRecords} delay={180} profitOf={(r) => r.profit} />
+                  <SplitRing total={totalPay} delay={220}
+                    subtitle={`Split of ${fmt(totalPay)} received`}
+                    segments={[
+                      { key: "profit", label: "Profit (you keep)", val: profit, color: "var(--pop)" },
+                      ...catTotals.map((c) => ({ key: c.id, label: c.label, val: c.amount, color: c.color })),
+                    ]} />
+                </div>
+              ) : (
+                <RevenueTrend records={mgmtRecords} delay={180} profitOf={(r) => r.profit} />
+              )}
+
+              {/* Activity heatmap */}
+              <ActivityHeatmap records={mgmtRecords} delay={260} />
+
+              {/* Per-brand */}
+              <div style={{ background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 16, padding: "20px 24px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>By brand</div>
+                {perBrand.filter((b) => b.count > 0).length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: C.textMuted }}>No entries in this period.</div>
+                ) : perBrand.filter((b) => b.count > 0).map((b) => (
+                  <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: "1px solid rgba(var(--ink-rgb),0.05)" }}>
+                    <Avatar name={b.name} size={34} color={b.color} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{b.name}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(b.pay)} in · {fmt(b.ex)} spent</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ textAlign: "right", fontWeight: 700, color: b.profit >= 0 ? C.earn : "#ef4444" }}>{fmt(b.profit)}</div>
+                      {b.pay > 0 && (
+                        <button onClick={() => invoiceBrand(b)} title="Invoice this brand" style={{ background: "var(--accent-dim)", border: "none", borderRadius: 6, color: "var(--accent)", fontSize: 10, padding: "5px 9px", cursor: "pointer", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", whiteSpace: "nowrap" }}><Icon name="file-text" size={12} style={{ marginRight: 5 }} />Invoice</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ═══ ADD ENTRY ═══ */}
+      {tab === "Add Entry" && (
+        <div>
+          <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 6 }}>Add an entry</h2>
+          <p style={{ fontSize: 13, color: C.textDim, marginBottom: 22 }}>Record what a brand paid you and what you spent. Profit is calculated for you.</p>
+          {brands.length === 0 ? (
+            <EmptyState icon="briefcase" text="Add a brand first" sub="You manage brands — create one to log entries"
+              action={<Btn onClick={() => setTab("Brands")}>Go to Brands →</Btn>} />
+          ) : (
+            <div style={{ maxWidth: 520 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 220px" }}>
+                  <Field label="Brand">
+                    <select value={entryBrandId} onChange={(e) => { setEntryBrandId(e.target.value); setPayment(""); setBrandRevenue(""); setExp({}); }}
+                      style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
+                      <option value="">Select brand...</option>
+                      {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <div style={{ flex: "1 1 140px" }}>
+                  <Field label="Date"><input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} style={inpStyle} /></Field>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {payIsPercent && (
+                  <div style={{ flex: "1 1 150px" }}>
+                    <Field label="Brand revenue">
+                      <input type="number" min="0" step="0.01" placeholder="0.00" value={brandRevenue}
+                        onChange={(e) => setBrandRevenue(e.target.value)} style={inpStyle} />
+                    </Field>
+                  </div>
+                )}
+                <div style={{ flex: "1 1 200px" }}>
+                  <Field label={"Client payment" + (payModel ? " · " + payDesc(payModel) : " (received)")}>
+                    <input type="number" min="0" step="0.01" placeholder="0.00"
+                      value={payment !== "" ? payment : (computedPayment != null ? +computedPayment.toFixed(2) : "")}
+                      onChange={(e) => setPayment(e.target.value)} style={inpStyle} />
+                  </Field>
+                </div>
+                {usesHours && (
+                  <div style={{ flex: "1 1 110px" }}>
+                    <Field label="Hours">
+                      <input type="number" min="0" step="0.5" placeholder="0" value={entryHours}
+                        onChange={(e) => setEntryHours(e.target.value)} style={inpStyle} />
+                    </Field>
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: C.accent, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.8, textTransform: "uppercase", margin: "10px 0 10px" }}>Expenses</div>
+              {cats.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 16, lineHeight: 1.6 }}>
+                  No expense categories yet — you can still log a payment-only entry.{" "}
+                  <button type="button" onClick={() => setTab("Categories")} style={{ background: "none", border: "none", color: "var(--pop)", cursor: "pointer", fontWeight: 600, padding: 0, fontSize: 12.5, textDecoration: "underline" }}>Add categories</button> to track spend.
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {cats.map((c) => {
+                    const auto = computedFor(c);
+                    const val = exp[c.id] !== undefined ? exp[c.id] : (auto ? +auto.toFixed(2) : "");
+                    return (
+                      <div key={c.id} style={{ flex: "1 1 150px" }}>
+                        <Field label={`${c.label} · ${costDesc(c.cost)}`}>
+                          <input type="number" min="0" step="0.01" placeholder="0.00" value={val}
+                            onChange={(e) => setExp((s) => ({ ...s, [c.id]: e.target.value }))} style={inpStyle} />
+                        </Field>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                background: "var(--pop-dim)", border: "1px solid var(--pop-border)", borderRadius: 12,
+                padding: "14px 18px", margin: "6px 0 18px",
+              }}>
+                <span style={{ fontSize: 12.5, color: C.textDim }}>Profit on this entry</span>
+                <span style={{ fontSize: 20, fontWeight: 800, color: liveProfit >= 0 ? C.earn : "#ef4444" }}>{fmt(liveProfit)}</span>
+              </div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <Btn onClick={saveEntry} disabled={!entryBrandId}>Save entry</Btn>
+                {savedFlash && <span style={{ fontSize: 13, color: C.earn, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="check" size={14} />Saved</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ BRANDS ═══ */}
+      {tab === "Brands" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+            <h2 style={{ fontSize: 21, fontWeight: 700 }}>Brands you manage</h2>
+            <Btn onClick={openNewBrand}>+ Add brand</Btn>
+          </div>
+          {brands.length === 0 ? (
+            <EmptyState icon="briefcase" text="No brands yet" sub="Add the people, creators, or brands you manage" />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+              {brands.map((b) => {
+                const count = entries.filter((e) => e.brandId === b.id).length;
+                return (
+                  <div key={b.id} style={{ background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 14, padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <Avatar name={b.name} size={40} color={b.color} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 15 }}>{b.name}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{count} {count === 1 ? "entry" : "entries"}</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textDim, marginTop: 10, fontFamily: "'JetBrains Mono',monospace" }}>Pays: {payDesc(b.payment)}</div>
+                    <button onClick={() => quickLog(b)} style={{
+                      width: "100%", marginTop: 12, padding: "9px 12px", borderRadius: 10, cursor: "pointer",
+                      fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      background: "var(--pop-dim)", border: "1px solid var(--pop-border)", color: "var(--pop)",
+                    }}><Icon name={canQuickLog(b) ? "check" : "file-text"} size={14} />{canQuickLog(b) ? "Log this month" : "New entry"}</button>
+                    {loggedThisMonth(b.id) && (
+                      <div style={{ fontSize: 11, color: C.earn, marginTop: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                        <Icon name="check" size={12} />Already logged this month
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+                      <button onClick={() => openEditBrand(b)} style={{ background: "rgba(var(--ink-rgb),0.04)", border: "1px solid rgba(var(--ink-rgb),0.08)", color: C.textDim, padding: "6px 12px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>Edit</button>
+                      <button onClick={() => setConfirmDel(b)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.18)", color: "#ef4444", padding: "6px 12px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>Remove</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ CATEGORIES ═══ */}
+      {tab === "Categories" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+            <h2 style={{ fontSize: 21, fontWeight: 700 }}>Expense categories</h2>
+            <Btn onClick={openNewCat}>+ Add category</Btn>
+          </div>
+          <p style={{ fontSize: 13, color: C.textDim, marginBottom: 22, maxWidth: 560 }}>
+            Define the costs your agency actually tracks (e.g. ads, tools, talent fees). These become the expense fields on every entry and the slices of your profit donut.
+          </p>
+          {cats.length === 0 ? (
+            <EmptyState icon="tag" text="No categories yet" sub="Add the expense types you want to track per entry"
+              action={<Btn onClick={openNewCat}>+ Add category</Btn>} />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+              {cats.map((c) => (
+                <div key={c.id} style={{ background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 14, padding: "16px 18px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 5, background: c.color, flex: "none" }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 15 }}>{c.label}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", marginTop: 2 }}>{costDesc(c.cost)}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                    <button onClick={() => openEditCat(c)} style={{ background: "rgba(var(--ink-rgb),0.04)", border: "1px solid rgba(var(--ink-rgb),0.08)", color: C.textDim, padding: "6px 12px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>Edit</button>
+                    <button onClick={() => deleteCat(c)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.18)", color: "#ef4444", padding: "6px 12px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>Remove</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ INVOICES ═══ */}
+      {tab === "Invoices" && (
+        <div>
+          <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 20 }}>Invoices</h2>
+          <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} />
+        </div>
+      )}
+
+      {/* ═══ HISTORY ═══ */}
+      {tab === "History" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+            <h2 style={{ fontSize: 21, fontWeight: 700 }}>Entry history</h2>
+            <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}
+              style={{ ...inpStyle, width: "auto", cursor: "pointer", background: "var(--surface)" }}>
+              <option value="all">All time</option>
+              {months.map((m) => <option key={m} value={m}>{mMonthLabel(m)}</option>)}
+            </select>
+          </div>
+
+          {/* Local data backup — everything lives in this browser, so keep a copy */}
+          <div className="no-print" style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12,
+            marginBottom: 20, padding: "14px 18px", background: C.card,
+            border: "1px solid " + C.cardBorder, borderRadius: 14,
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Backup &amp; restore</div>
+              <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>
+                Your data is stored only in this browser. Save a backup file regularly so you don't lose it.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="secondary" onClick={onExport} style={{ fontSize: 12, padding: "8px 14px" }}><Icon name="download" size={13} style={{ marginRight: 5 }} />Save backup</Btn>
+              <Btn variant="secondary" onClick={() => importRef.current && importRef.current.click()} style={{ fontSize: 12, padding: "8px 14px" }}><Icon name="upload" size={13} style={{ marginRight: 5 }} />Restore</Btn>
+              <input ref={importRef} type="file" accept="application/json,.json" onChange={onImport} style={{ display: "none" }} aria-hidden="true" />
+            </div>
+          </div>
+
+          {sortedEntries.length === 0 ? (
+            <EmptyState icon="file-text" text="No entries yet" sub="Logged entries will appear here" />
+          ) : (
+            <div className="mobile-scroll-x" style={{ borderRadius: 14, overflow: "hidden", border: "1px solid " + C.cardBorder }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 0.7fr 0.8fr 0.8fr 0.8fr 76px", minWidth: 580, padding: "10px 18px", background: "rgba(var(--accent-rgb),0.015)", fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.7, textTransform: "uppercase", gap: 6 }}>
+                <div>Brand</div><div>Date</div><div>Payment</div><div>Expenses</div><div>Profit</div><div></div>
+              </div>
+              {sortedEntries.map((e) => {
+                const ex = entryExpenses(e), pr = entryProfit(e);
+                return (
+                  <div key={e.id} className="recrow" style={{ display: "grid", gridTemplateColumns: "1fr 0.7fr 0.8fr 0.8fr 0.8fr 76px", minWidth: 580, padding: "12px 18px", borderTop: "1px solid rgba(var(--accent-rgb),0.03)", fontSize: 13, alignItems: "center", gap: 6 }}>
+                    <div style={{ fontWeight: 600 }}>{brandLabel(e.brandId)}</div>
+                    <div style={{ color: C.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{mDate(e.date)}</div>
+                    <div style={{ fontWeight: 700, color: C.accent }}>{fmt(e.payment)}</div>
+                    <div style={{ color: C.textDim, fontSize: 12 }}>{fmt(ex)}</div>
+                    <div style={{ fontWeight: 700, color: pr >= 0 ? C.earn : "#ef4444" }}>{fmt(pr)}</div>
+                    <div className="no-print" style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
+                      <button onClick={() => invoiceEntry(e)} aria-label="Invoice brand" title="Invoice" style={{ background: "none", border: "none", color: "rgba(var(--ink-rgb),0.4)", cursor: "pointer", fontSize: 13, padding: 3, display: "inline-flex" }}><Icon name="file-text" size={14} /></button>
+                      <button onClick={() => deleteEntry(e)} aria-label="Delete entry" title="Delete" style={{ background: "none", border: "none", color: "rgba(239,68,68,0.45)", cursor: "pointer", fontSize: 14, padding: 3 }}><Icon name="x" size={14} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Brand add/edit modal */}
+      <Modal open={!!brandModal} onClose={() => setBrandModal(null)} title={brandModal === "new" ? "Add brand" : "Edit brand"}>
+        <Field label="Brand name">
+          <input type="text" placeholder="Enter brand name..." value={brandName} autoFocus
+            onChange={(e) => setBrandName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") saveBrand(); }} style={inpStyle} />
+        </Field>
+        <Field label="Avatar color">
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Avatar name={brandName || "?"} size={36} color={brandColor} />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {CLIENT_COLORS.map((col) => (
+                <button key={col} type="button" onClick={() => setBrandColor(col)} aria-label={"Use color " + col} style={{
+                  width: 26, height: 26, borderRadius: 8, background: col, cursor: "pointer", padding: 0,
+                  border: brandColor === col ? "2px solid var(--ink)" : "2px solid transparent",
+                  boxShadow: brandColor === col ? "inset 0 0 0 2px #fff" : "0 1px 3px rgba(var(--ink-rgb),0.18)",
+                }} />
+              ))}
+            </div>
+          </div>
+        </Field>
+        <Field label="Client payment">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.textDim, cursor: "pointer", marginBottom: brandPayAuto ? 10 : 0 }}>
+            <input type="checkbox" checked={brandPayAuto} onChange={(e) => setBrandPayAuto(e.target.checked)} />
+            Auto-calculate from a payment structure
+          </label>
+          {brandPayAuto && <CommissionEditor value={brandPay} onChange={setBrandPay} symbol={curSymbol} />}
+          <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 6 }}>
+            Flat = a fixed retainer per entry; percentage = a share of the brand's revenue (you'll enter revenue per entry); hourly = rate × hours. Leave off to type the payment manually each time.
+          </div>
+        </Field>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+          <Btn variant="secondary" onClick={() => setBrandModal(null)}>Cancel</Btn>
+          <Btn onClick={saveBrand} disabled={!brandName.trim()}>{brandModal === "new" ? "Add brand" : "Save"}</Btn>
+        </div>
+      </Modal>
+
+      {/* Category add/edit modal */}
+      <Modal open={!!catModal} onClose={() => setCatModal(null)} title={catModal === "new" ? "Add category" : "Edit category"}>
+        <Field label="Category name">
+          <input type="text" placeholder="e.g. Ads, Tools, Talent..." value={catName} autoFocus
+            onChange={(e) => setCatName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") saveCat(); }} style={inpStyle} />
+        </Field>
+        <Field label="Color">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {EXP_CAT_COLORS.map((col) => (
+              <button key={col} type="button" onClick={() => setCatColor(col)} aria-label={"Use color " + col} style={{
+                width: 26, height: 26, borderRadius: 8, background: col, cursor: "pointer", padding: 0,
+                border: catColor === col ? "2px solid var(--ink)" : "2px solid transparent",
+                boxShadow: catColor === col ? "inset 0 0 0 2px #fff" : "0 1px 3px rgba(var(--ink-rgb),0.18)",
+              }} />
+            ))}
+          </div>
+        </Field>
+        <Field label="How this cost is calculated">
+          <CommissionEditor value={catCost} onChange={setCatCost} symbol={curSymbol} />
+          <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 6 }}>
+            Percentage applies to each client payment; flat is a fixed amount per entry; hourly multiplies by hours logged. You can still override the amount on any single entry.
+          </div>
+        </Field>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+          <Btn variant="secondary" onClick={() => setCatModal(null)}>Cancel</Btn>
+          <Btn onClick={saveCat} disabled={!catName.trim()}>{catModal === "new" ? "Add category" : "Save"}</Btn>
+        </div>
+      </Modal>
+
+      {/* Confirm brand delete */}
+      <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Remove brand">
+        <p style={{ color: C.textDim, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
+          {confirmDel && <span>Remove <strong style={{ color: "var(--ink)" }}>{confirmDel.name}</strong> and all its entries?</span>}
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Btn variant="secondary" onClick={() => setConfirmDel(null)}>Cancel</Btn>
+          <button onClick={() => deleteBrand(confirmDel)} style={{ padding: "11px 22px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 11, color: "#ef4444", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Space Grotesk',sans-serif" }}>Remove</button>
+        </div>
+      </Modal>
+
+      {quickMsg && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 2000,
+          background: "rgba(20,22,20,0.96)", color: "#fff", padding: "12px 18px", borderRadius: 12,
+          fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
+          boxShadow: "0 12px 32px rgba(0,0,0,0.32)",
+        }}><Icon name="check" size={15} style={{ color: "#7CFC9B" }} />{quickMsg}</div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [data, setData] = useState(defaultState);
   const config = data.config || defaultConfig;
@@ -1405,6 +2594,7 @@ function App() {
   const [salesDate, setSalesDate] = useState(today());
   const [bulkAmounts, setBulkAmounts] = useState({});
   const [bulkHours, setBulkHours] = useState({});
+  const [batchRoleStaff, setBatchRoleStaff] = useState({}); // { roleId: staffId } credited for this batch
   const [savedFlash, setSavedFlash] = useState(false);
 
   // Modals
@@ -1430,9 +2620,11 @@ function App() {
   const [newStaffPart, setNewStaffPart] = useState({ model: "percent", rate: CHATTER_CUT });
   const [newClientCurrency, setNewClientCurrency] = useState(config.locale.currency || "USD");
   const [newChatterName, setNewChatterName] = useState("");
-  const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: AGENCY_CUT });
+const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: AGENCY_CUT });
   const [editStaffPart, setEditStaffPart] = useState({ model: "percent", rate: CHATTER_CUT });
   const [editClientCurrency, setEditClientCurrency] = useState(config.locale.currency || "USD");
+  const [editClientColor, setEditClientColor] = useState(CLIENT_COLORS[0]);
+  const [editRoles, setEditRoles] = useState([]); // extra payout roles for the client being edited
 
   // Sharing & Invoices
   const [shareCard, setShareCard] = useState(null);
@@ -1455,18 +2647,22 @@ function App() {
   const [pastedText, setPastedText] = useState("");
   const [reviewItems, setReviewItems] = useState(null);
 
-  // Refs & Voice
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef(null);
   const inputRefs = useRef({});
   const importRef = useRef(null);
 
   useEffect(() => {
     loadData().then((d) => {
       setData((prev) => ({
-        clients: d?.clients ?? prev.clients,
+        clients: (d?.clients ?? prev.clients).map((cl, i) => ({
+          ...cl,
+          color: cl.color || CLIENT_COLORS[i % CLIENT_COLORS.length],
+          roles: Array.isArray(cl.roles) ? cl.roles : [],
+        })),
         chatters: d?.chatters ?? prev.chatters,
         records: d?.records ?? prev.records,
+        brands: d?.brands ?? prev.brands,
+        entries: d?.entries ?? prev.entries,
+        invoices: d?.invoices ?? prev.invoices,
         config: mergeConfig(d?.config),
       }));
       setLoading(false);
@@ -1475,6 +2671,65 @@ function App() {
 
   const persist = (d) => { setData(d); saveData(d); };
 
+  // Theme: remembers the user's choice; defaults to the OS preference on first load.
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    let on = true;
+    window.storage.get(THEME_KEY).then((r) => {
+      if (!on) return;
+      if (r && r.value != null) setDark(r.value === "dark");
+      else if (typeof matchMedia !== "undefined") setDark(matchMedia("(prefers-color-scheme: dark)").matches);
+    }).catch(() => {});
+    return () => { on = false; };
+  }, []);
+  const toggleTheme = () => {
+    setDark((d) => {
+      const next = !d;
+      window.storage.set(THEME_KEY, next ? "dark" : "light").catch(() => {});
+      return next;
+    });
+  };
+  const TH = dark ? DARK : THEME;
+
+  // Live cross-device sync: userStorage pushes a "agencyx:remote" event when this
+  // user's data changes on another device. Apply it to the running app.
+  useEffect(() => {
+    const onRemote = (e) => {
+      const { key, value } = e.detail || {};
+      if (value == null) return;
+      if (key === STORAGE_KEY) {
+        try {
+          const d = JSON.parse(value);
+          setData((prev) => ({
+            clients: (d?.clients ?? prev.clients).map((cl, i) => ({
+              ...cl,
+              color: cl.color || CLIENT_COLORS[i % CLIENT_COLORS.length],
+              roles: Array.isArray(cl.roles) ? cl.roles : [],
+            })),
+            chatters: d?.chatters ?? prev.chatters,
+            records: d?.records ?? prev.records,
+            brands: d?.brands ?? prev.brands,
+            entries: d?.entries ?? prev.entries,
+            invoices: d?.invoices ?? prev.invoices,
+            config: mergeConfig(d?.config),
+          }));
+        } catch { /* ignore malformed remote payload */ }
+      } else if (key === THEME_KEY) {
+        setDark(value === "dark");
+      }
+    };
+    window.addEventListener("agencyx:remote", onRemote);
+    return () => window.removeEventListener("agencyx:remote", onRemote);
+  }, []);
+
+  // Upsert a tracked invoice by its number (shared by service + management invoice views).
+  const upsertInvoice = (inv) => {
+    const list = Array.isArray(data.invoices) ? data.invoices : [];
+    const idx = list.findIndex((x) => x.number === inv.number);
+    const next = idx >= 0 ? list.map((x, i) => (i === idx ? { ...x, ...inv } : x)) : [...list, { id: genId(), ...inv }];
+    persist({ ...data, invoices: next });
+  };
+
   // Populate the edit-commission fields whenever a client is opened for editing.
   useEffect(() => {
     if (editingClient) {
@@ -1482,6 +2737,8 @@ function App() {
       setEditAgencyPart(JSON.parse(JSON.stringify(comm.agency)));
       setEditStaffPart(JSON.parse(JSON.stringify(comm.staff)));
       setEditClientCurrency(editingClient.currency || config.locale.currency || "USD");
+      setEditClientColor(clientColor(editingClient));
+      setEditRoles(clientRoles(editingClient).map((r) => ({ ...r })));
     }
   }, [editingClient]);
 
@@ -1537,7 +2794,7 @@ function App() {
   });
 
   const addClient = () => {
-    const c = { id: genId(), name: newClientName, currency: (newClientCurrency || config.locale.currency || "USD").toUpperCase(), ...clientCommFields(newAgencyPart, newStaffPart) };
+    const c = { id: genId(), name: newClientName, color: CLIENT_COLORS[data.clients.length % CLIENT_COLORS.length], currency: (newClientCurrency || config.locale.currency || "USD").toUpperCase(), ...clientCommFields(newAgencyPart, newStaffPart) };
     persist({ ...data, clients: [...data.clients, c] });
     setNewClientName(""); setAddClientOpen(false);
   };
@@ -1547,9 +2804,18 @@ function App() {
     persist({ ...data, chatters: [...data.chatters, c] });
     setNewChatterName(""); setAddChatterOpen(false);
   };
+  // The role label for a team member: their extra role name, or the primary staff term.
+  const memberRoleName = (ch) => {
+    if (!ch || !ch.roleId) return null;
+    const cl = data.clients.find((c) => c.id === ch.clientId);
+    return (clientRoles(cl).find((r) => r.id === ch.roleId) || {}).name || null;
+  };
 
   const updateClientCuts = (id, agency, staff) => {
-    const clients = data.clients.map((cl) => (cl.id === id ? { ...cl, currency: (editClientCurrency || config.locale.currency || "USD").toUpperCase(), ...clientCommFields(agency, staff) } : cl));
+    const roles = editRoles
+      .filter((r) => (r.name || "").trim())
+      .map((r) => ({ id: r.id || genId(), name: r.name.trim(), rate: Number(r.rate) || 0 }));
+    const clients = data.clients.map((cl) => (cl.id === id ? { ...cl, color: editClientColor, currency: (editClientCurrency || config.locale.currency || "USD").toUpperCase(), roles, ...clientCommFields(agency, staff) } : cl));
     persist({ ...data, clients }); setEditingClient(null);
   };
 
@@ -1620,11 +2886,21 @@ function App() {
           const { agencyShare, staffShare } = computeShares(client, num, hours);
           const rec = { id: genId(), chatterId: cid, amount: money(num), date: salesDate, agencyCut: agencyShare, chatterCut: staffShare, currency: clientCur(client) };
           if (hours) rec.hours = hours;
+          // Credit any extra roles selected for this batch.
+          const extras = clientRoles(client)
+            .map((role) => {
+              const staffId = batchRoleStaff[role.id];
+              if (!staffId) return null;
+              const m = data.chatters.find((x) => x.id === staffId);
+              return { roleId: role.id, name: role.name, staffId, staffName: m ? m.name : "", cut: roleCut(role, num) };
+            })
+            .filter(Boolean);
+          if (extras.length) rec.extras = extras;
           newRecs.push(rec);
         }
       });
     });
-    if (newRecs.length) { persist({ ...data, records: [...data.records, ...newRecs] }); setBulkAmounts({}); setBulkHours({}); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 2500); }
+    if (newRecs.length) { persist({ ...data, records: [...data.records, ...newRecs] }); setBulkAmounts({}); setBulkHours({}); setBatchRoleStaff({}); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 2500); }
   };
 
   const parseSales = () => {
@@ -1716,44 +2992,11 @@ function App() {
     setBulkAmounts(next); setReviewItems(null); setPastedText(""); setSmartPasteOpen(false);
   };
 
-  const toggleVoice = () => {
-    if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
-    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Speech) { alert("Voice not supported"); return; }
-    const rec = new Speech(); rec.continuous = true; rec.interimResults = false; rec.lang = "en-US";
-    rec.onresult = (e) => {
-      const last = e.results[e.results.length - 1][0].transcript.toLowerCase();
-      salesChatters.forEach((ch) => {
-        const escapedName = ch.name.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const nameReg = new RegExp(escapedName, 'i');
-        const match = last.match(nameReg);
-        if (match) {
-          const index = match.index;
-          const beforeChar = index > 0 ? last[index - 1] : '';
-          const afterChar = index + match[0].length < last.length ? last[index + match[0].length] : '';
-          
-          const isAlphaNumeric = (char) => /[a-z0-9]/i.test(char);
-          if (!isAlphaNumeric(beforeChar) && !isAlphaNumeric(afterChar)) {
-            const textBefore = last.slice(0, index);
-            const textAfter = last.slice(index + match[0].length);
-            
-            let numMatch = textAfter.match(/([0-9]+)/);
-            if (!numMatch) {
-              numMatch = textBefore.match(/([0-9]+)/);
-            }
-            if (numMatch) {
-              setVal(ch.id, getVals(ch.id).length - 1, numMatch[1]);
-            }
-          }
-        }
-      });
-    };
-    rec.start(); recognitionRef.current = rec; setIsListening(true);
-  };
-
   const exportCSV = (recs) => {
     const esc = (v) => {
-      const s = String(v ?? "");
+      let s = String(v ?? "");
+      // Neutralize spreadsheet formula injection (=, +, -, @, tab, CR triggers).
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     const headers = [t.staff.one, t.client.one, "Date", "Total Amount", t.agencyShareLabel, t.staffShareLabel];
@@ -1777,6 +3020,11 @@ function App() {
   const handleImportFile = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert("That file is too large to be a backup from this app (over 10 MB).");
+      e.target.value = ""; return;
+    }
+    const isPlainObject = (o) => o != null && typeof o === "object" && !Array.isArray(o);
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -1784,11 +3032,25 @@ function App() {
         if (!p || !Array.isArray(p.clients) || !Array.isArray(p.chatters) || !Array.isArray(p.records)) {
           alert("That file isn't a valid backup — it should contain clients, chatters and records."); return;
         }
+        const arr = (x) => (Array.isArray(x) ? x : []);
+        const brands = arr(p.brands), entries = arr(p.entries), invoices = arr(p.invoices);
+        // Every stored item must be a plain object; reject malformed/injected structures.
+        if (![...p.clients, ...p.chatters, ...p.records, ...brands, ...entries, ...invoices].every(isPlainObject)) {
+          alert("That backup contains malformed entries and can't be imported safely."); return;
+        }
+        // Summarise whatever the backup actually holds (service vs management data).
+        const parts = [];
+        if (p.clients.length) parts.push(`${p.clients.length} clients`);
+        if (p.chatters.length) parts.push(`${p.chatters.length} chatters`);
+        if (p.records.length) parts.push(`${p.records.length} sales`);
+        if (brands.length) parts.push(`${brands.length} brands`);
+        if (entries.length) parts.push(`${entries.length} entries`);
+        const summary = parts.length ? parts.join(", ") : "this backup";
         const ok = window.confirm(
-          `Import ${p.clients.length} clients, ${p.chatters.length} chatters and ${p.records.length} sales?\n\nThis replaces everything currently in the app. Export a backup first if you're unsure.`
+          `Import ${summary}?\n\nThis replaces everything currently in the app. Export a backup first if you're unsure.`
         );
         if (!ok) return;
-        persist({ clients: p.clients, chatters: p.chatters, records: p.records, config: mergeConfig(p.config) });
+        persist({ clients: p.clients, chatters: p.chatters, records: p.records, brands, entries, invoices, config: mergeConfig(p.config) });
       } catch {
         alert("Couldn't read that file — make sure it's a JSON backup exported from this app.");
       } finally {
@@ -1800,11 +3062,38 @@ function App() {
 
   const printReport = () => { printElement("history-printable", "Sales_History_" + today()); };
 
-  const salesChatters = data.chatters.filter((c) => salesClientId === "all" || c.clientId === salesClientId);
+  // Only primary-role members get amount inputs in the grid; extra-role people are credited per batch.
+  const salesChatters = data.chatters.filter((c) => (salesClientId === "all" || c.clientId === salesClientId) && !c.roleId);
   const dashRecs = data.records.filter((r) => dashFilterDate === "all" || r.date === dashFilterDate);
   const totalSales = sumMoney(dashRecs, (r) => toBase(r.amount, r.currency));
   const totalAgency = sumMoney(dashRecs, (r) => toBase(r.agencyCut, r.currency));
   const totalChatterPay = sumMoney(dashRecs, (r) => toBase(r.chatterCut, r.currency));
+  // Month-over-month momentum (only shown on the all-time view, where the comparison is meaningful).
+  const salesDelta = (() => {
+    if (dashFilterDate !== "all") return null;
+    const now = new Date();
+    const thisKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastKey = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, "0")}`;
+    const sumMo = (k) => sumMoney(data.records.filter((r) => (r.date || "").slice(0, 7) === k), (r) => toBase(r.amount, r.currency));
+    const thisMo = sumMo(thisKey), lastMo = sumMo(lastKey);
+    if (lastMo <= 0) return null;
+    return Math.round(((thisMo - lastMo) / lastMo) * 100);
+  })();
+  // Month-over-month deltas for the agency-cut and staff-pay cards (same all-time gating).
+  const moDelta = (field) => {
+    if (dashFilterDate !== "all") return null;
+    const now = new Date();
+    const thisKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastKey = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, "0")}`;
+    const sumMo = (k) => sumMoney(data.records.filter((r) => (r.date || "").slice(0, 7) === k), (r) => toBase(r[field], r.currency));
+    const t1 = sumMo(thisKey), l1 = sumMo(lastKey);
+    if (l1 <= 0) return null;
+    return Math.round(((t1 - l1) / l1) * 100);
+  };
+  const agencyDelta = moDelta("agencyCut");
+  const chatterDelta = moDelta("chatterCut");
   // Per-currency breakdown of sales (for the multi-currency note).
   const salesByCurrency = (() => {
     const m = {};
@@ -1821,14 +3110,50 @@ function App() {
 
   const clientStats = data.clients.map((cl) => {
     const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && data.chatters.find((c) => c.id === r.chatterId)?.clientId === cl.id);
-    return { id: cl.id, name: cl.name, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length };
+    return { id: cl.id, name: cl.name, color: cl.color, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length };
   });
 
-  const chatterStats = data.chatters.map((ch) => {
+  // Primary-role members: earnings from records they logged.
+  const chatterStats = data.chatters.filter((ch) => !ch.roleId).map((ch) => {
     const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && r.chatterId === ch.id);
     const cl = data.clients.find((c) => c.id === ch.clientId);
     return { id: ch.id, name: ch.name, clientId: ch.clientId, currency: clientCur(cl), total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), count: recs.length };
   });
+
+  // Extra-role members: pay comes from record extras attributed to them.
+  const roleMemberStats = data.chatters.filter((ch) => ch.roleId).map((ch) => {
+    const cl = data.clients.find((c) => c.id === ch.clientId);
+    const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && Array.isArray(r.extras) && r.extras.some((e) => e.staffId === ch.id));
+    const pay = sumMoney(recs, (r) => (r.extras.find((e) => e.staffId === ch.id) || {}).cut || 0);
+    return { id: ch.id, name: ch.name, clientId: ch.clientId, roleName: memberRoleName(ch), currency: clientCur(cl), pay, count: recs.length };
+  });
+
+  // Per extra-role payout totals across the filtered records (for the dashboard split + cards).
+  const roleTotals = (() => {
+    const m = {};
+    dashRecs.forEach((r) => {
+      (Array.isArray(r.extras) ? r.extras : []).forEach((e) => {
+        const key = e.name || "Role";
+        m[key] = (m[key] || 0) + toBase(e.cut, r.currency);
+      });
+    });
+    return Object.entries(m).map(([name, amount]) => ({ name, amount: money(amount) }));
+  })();
+
+  // Auto-generated insight callouts for the dashboard.
+  const dayTotals = {};
+  dashRecs.forEach((r) => { dayTotals[r.date] = (dayTotals[r.date] || 0) + toBase(r.amount, r.currency); });
+  const bestSalesDay = Object.entries(dayTotals).sort((a, b) => b[1] - a[1])[0];
+  const topClient = [...clientStats].sort((a, b) => b.total - a.total)[0];
+  const topEarner = [...chatterStats].sort((a, b) => b.total - a.total)[0];
+  const avgSale = dashRecs.length ? money(totalSales / dashRecs.length) : 0;
+  const serviceHighlights = [
+    salesDelta != null && { icon: salesDelta >= 0 ? "trending-up" : "trending-down", label: t.revenue.many + " vs last month", value: (salesDelta >= 0 ? "+" : "") + salesDelta + "%", tone: salesDelta >= 0 ? "good" : "bad" },
+    topClient && topClient.total > 0 && { icon: "award", label: "Top " + t.client.one.toLowerCase(), value: topClient.name + " · " + fmtIn(topClient.total, topClient.currency), tone: "good" },
+    topEarner && topEarner.total > 0 && { icon: "star", label: "Top " + t.staff.one.toLowerCase(), value: topEarner.name + " · " + fmtIn(topEarner.total, topEarner.currency) },
+    bestSalesDay && { icon: "flame", label: "Best day", value: shortDate(bestSalesDay[0]) + " · " + fmt(bestSalesDay[1]) },
+    dashRecs.length > 0 && { icon: "file-text", label: "Avg " + t.revenue.one.toLowerCase(), value: fmt(avgSale) },
+  ];
 
   const clientNameFn = (id) => data.clients.find((c) => c.id === id)?.name || "Unknown";
   const chatterNameFn = (id) => data.chatters.find((c) => c.id === id)?.name || "Unknown";
@@ -1890,39 +3215,51 @@ function App() {
 
   return (
     <ConfigContext.Provider value={config}>
-    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "#fff", fontFamily: "'Outfit',sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif" }}>
 
       <style>
         {`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
         :root {
-          --accent: ${config.branding.accent};
-          --accent2: ${config.branding.accent2};
-          --accent3: ${config.branding.accent3};
-          --accent-rgb: ${hexToRgb(config.branding.accent)};
-          --accent-glow: rgba(${hexToRgb(config.branding.accent)}, 0.14);
-          --accent-dim: rgba(${hexToRgb(config.branding.accent)}, 0.08);
-          --accent-border: rgba(${hexToRgb(config.branding.accent)}, 0.16);
-          --bg: ${THEME.bg};
-          --card-bg: ${THEME.card};
-          --card-border: ${THEME.cardBorder};
-          --text-dim: ${THEME.textDim};
-          --text-muted: ${THEME.textMuted};
-          --earn: ${THEME.earn};
-          --violet: ${THEME.violet};
-          --surface: ${THEME.surface};
-          --surface2: ${THEME.surface2};
-          --blur: ${THEME.blur};
+          --accent: ${TH.accent};
+          --accent2: ${TH.accent2};
+          --accent3: ${TH.accent3};
+          --accent-rgb: ${TH.accentRgb};
+          --accent-fg: ${TH.accentFg};
+          --accent-glow: rgba(var(--accent-rgb), 0.10);
+          --accent-dim: rgba(var(--accent-rgb), 0.06);
+          --accent-border: rgba(var(--accent-rgb), 0.14);
+          --pop: #F35627;
+          --pop2: #D63E1A;
+          --pop-rgb: 243, 86, 39;
+          --pop-dim: rgba(243, 86, 39, 0.10);
+          --pop-border: rgba(243, 86, 39, 0.32);
+          --ink: ${TH.ink};
+          --ink-rgb: ${TH.inkRgb};
+          --ink-soft: ${TH.inkSoft};
+          --scrim: ${TH.scrim};
+          --bg: ${TH.bg};
+          --card-bg: ${TH.card};
+          --card-border: ${TH.cardBorder};
+          --text-dim: ${TH.textDim};
+          --text-muted: ${TH.textMuted};
+          --earn: ${TH.earn};
+          --violet: ${TH.violet};
+          --surface: ${TH.surface};
+          --surface2: ${TH.surface2};
+          --header-bg: ${TH.headerBg};
+          --field-bg: ${TH.fieldBg};
+          --field-border: ${TH.fieldBorder};
+          --blur: ${TH.blur};
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           background: var(--bg);
           background-image:
-            radial-gradient(900px 520px at 10% -10%, rgba(52,211,153,0.13), transparent 60%),
-            radial-gradient(820px 560px at 105% 12%, rgba(167,139,250,0.10), transparent 55%),
-            radial-gradient(760px 700px at 50% 118%, rgba(var(--accent-rgb),0.05), transparent 60%);
+            radial-gradient(900px 520px at 10% -10%, rgba(17,17,17,0.02), transparent 60%),
+            radial-gradient(820px 560px at 105% 12%, rgba(17,17,17,0.015), transparent 55%);
           background-attachment: fixed;
-          min-height: 100vh; font-family: 'Outfit', sans-serif; color: #fff;
+          min-height: 100vh; font-family: 'Plus Jakarta Sans', sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; letter-spacing: -0.01em;
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -1931,20 +3268,23 @@ function App() {
         @keyframes shimmer { 100% { transform: translateX(100%); } }
         @keyframes auroraSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes ringGrow { from { stroke-dashoffset: var(--circ); } }
-        @keyframes loaderGlow { 0%,100% { box-shadow: 0 10px 40px rgba(52,211,153,0.35), inset 0 1px 0 rgba(255,255,255,0.5); } 50% { box-shadow: 0 14px 60px rgba(var(--accent-rgb),0.6), inset 0 1px 0 rgba(255,255,255,0.6); } }
+        @keyframes loaderGlow { 0%,100% { box-shadow: 0 10px 40px rgba(17,17,17,0.18), inset 0 1px 0 rgba(var(--ink-rgb),0.5); } 50% { box-shadow: 0 14px 60px rgba(var(--accent-rgb),0.6), inset 0 1px 0 rgba(var(--ink-rgb),0.6); } }
         @keyframes loaderFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
         @keyframes barSweep { 0% { left: -40%; } 100% { left: 100%; } }
         @keyframes spinIn { from { transform: rotate(-120deg) scale(0.6); opacity: 0; } to { transform: rotate(0) scale(1); opacity: 1; } }
         .rise { opacity: 0; animation: riseIn 0.55s cubic-bezier(.2,.8,.2,1) forwards; }
         .lift { transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .28s ease; }
-        .lift:hover { transform: translateY(-3px); box-shadow: 0 22px 46px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.08); border-color: var(--accent-border); }
-        .btnp:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(var(--accent-rgb),0.42), inset 0 1px 0 rgba(255,255,255,0.5); filter: brightness(1.04); }
+        .lift:hover { transform: translateY(-3px); box-shadow: 0 22px 46px rgba(var(--ink-rgb),0.12), inset 0 1px 0 rgba(var(--ink-rgb),0.08); border-color: var(--accent-border); }
+        .btnp:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(var(--pop-rgb),0.42), inset 0 1px 0 rgba(255,255,255,0.3); filter: brightness(1.04); }
         .btnp:active:not(:disabled) { transform: translateY(0); }
-        .btns:hover:not(:disabled) { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.85); }
+        .btns:hover:not(:disabled) { background: rgba(var(--ink-rgb),0.07); color: var(--ink); }
         .chrow { transition: background .2s ease, border-color .2s ease; }
         .chrow:hover { background: rgba(var(--accent-rgb),0.05) !important; border-color: var(--accent-border) !important; }
         .recrow { transition: background .18s ease; }
         .recrow:hover { background: rgba(var(--accent-rgb),0.035) !important; }
+        .dash-bento { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr); gap: 14px; align-items: stretch; }
+        @media (max-width: 760px) { .dash-bento { grid-template-columns: 1fr; } }
+        .delta-pill { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono',monospace; }
         .glass { backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); }
         :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
         @media (prefers-reduced-motion: reduce) {
@@ -1991,6 +3331,25 @@ function App() {
           .mobile-mb-none { margin-bottom: 0 !important; }
           .mobile-scroll-x { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
         }
+        .brutal-amt { border: 2.5px solid #111 !important; border-radius: 0 !important; background: #fff !important; font-weight: 700 !important; box-shadow: 3px 3px 0 #111; transition: box-shadow .2s ease, border-color .2s ease, transform .15s ease; }
+        .brutal-amt::placeholder { color: #9a9a9a; transition: color .2s ease; }
+        .brutal-amt:focus::placeholder { color: transparent; }
+        .brutal-amt:focus { border-color: var(--pop) !important; box-shadow: 3px 3px 0 #111, 6px 6px 0 var(--pop); animation: brutalPulse 1.8s ease-in-out infinite; }
+        @keyframes brutalPulse { 0%,100%{border-color:#111 !important} 50%{border-color:var(--pop) !important} }
+        .brutal-check { position: relative; display: inline-block; cursor: pointer; width: 1.5em; height: 1.5em; flex: none; line-height: 0; }
+        .brutal-check input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+        .brutal-check .bmk { position: absolute; inset: 0; background: #fff; border: 0.16em solid #111; border-radius: 8% 92% 12% 88% / 87% 11% 89% 13%; box-shadow: 0.22em 0.22em 0 #111; transition: transform .2s cubic-bezier(0.175,0.885,0.32,1.275), box-shadow .2s ease, background .2s ease, border-radius .2s ease; }
+        .brutal-check:hover .bmk { transform: scale(1.05) rotate(2deg); }
+        .brutal-check input:checked ~ .bmk { background: var(--pop); border-radius: 92% 8% 88% 12% / 11% 87% 13% 89%; transform: scale(1.1) rotate(-2deg); }
+        .brutal-check .bmk::after { content: ""; position: absolute; display: none; left: 50%; top: 45%; width: 0.28em; height: 0.6em; border: solid #111; border-width: 0 0.22em 0.22em 0; transform: translate(-50%,-50%) rotate(45deg); }
+        .brutal-check input:checked ~ .bmk::after { display: block; animation: brutalSplash .3s forwards; }
+        .brutal-check:active .bmk { transform: scale(0.9) translateY(0.18em); box-shadow: 0 0 0 #111; }
+        @keyframes brutalSplash { 0%{transform:translate(-50%,-50%) scale(0) rotate(45deg);opacity:0} 70%{transform:translate(-50%,-50%) scale(1.2) rotate(45deg)} 100%{transform:translate(-50%,-50%) scale(1) rotate(45deg);opacity:1} }
+        .coin-loader { height: 110px; aspect-ratio: 1; position: relative; }
+        .coin-loader::before, .coin-loader::after { content: ""; position: absolute; inset: 0; border-radius: 50%; transform-origin: bottom; }
+        .coin-loader::after { background: radial-gradient(at 75% 15%,#fffb,#0000 35%), radial-gradient(at 80% 40%,#0000,#0008), radial-gradient(circle 5px,#fff 94%,#0000), radial-gradient(circle 10px,#000 94%,#0000), linear-gradient(var(--pop) 0 0) top/100% calc(50% - 5px), linear-gradient(#fff 0 0) bottom/100% calc(50% - 5px) #000; background-repeat: no-repeat; animation: coinFlip 1s infinite cubic-bezier(0.5,120,0.5,-120); }
+        .coin-loader::before { background: #ddd; filter: blur(8px); transform: scaleY(0.4) translate(-13px, 0px); }
+        @keyframes coinFlip { 30%,70% { transform: rotate(0deg) } 49.99% { transform: rotate(0.2deg) } 50% { transform: rotate(-0.2deg) } }
         `}
       </style>
 
@@ -2000,21 +3359,16 @@ function App() {
           position: "fixed", inset: 0, zIndex: 3000, display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", gap: 26,
           background: "var(--bg)",
-          backgroundImage: "radial-gradient(800px 500px at 50% 30%, rgba(52,211,153,0.14), transparent 60%), radial-gradient(700px 600px at 50% 120%, rgba(167,139,250,0.10), transparent 55%)",
+          backgroundImage: "radial-gradient(800px 500px at 50% 30%, rgba(17,17,17,0.04), transparent 60%), radial-gradient(700px 600px at 50% 120%, rgba(17,17,17,0.03), transparent 55%)",
           opacity: ready ? 0 : 1, transform: ready ? "scale(1.04)" : "scale(1)",
           transition: "opacity 0.5s ease, transform 0.5s ease", pointerEvents: ready ? "none" : "auto",
         }}>
-          <div style={{
-            width: 76, height: 76, borderRadius: 22, display: "grid", placeItems: "center",
-            background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b",
-            fontWeight: 800, fontSize: 40, fontFamily: "'Outfit',sans-serif",
-            animation: "spinIn 0.6s cubic-bezier(.2,.8,.2,1), loaderGlow 2.4s ease-in-out 0.6s infinite, loaderFloat 3s ease-in-out 0.6s infinite",
-          }}>{(config.business.name || "?").charAt(0).toUpperCase()}</div>
+          <div className="coin-loader" />
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: -0.3 }}>{config.business.name}</div>
             <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", textTransform: "uppercase", marginTop: 4 }}>{config.business.tagline}</div>
           </div>
-          <div style={{ width: 180, height: 3, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden", position: "relative" }}>
+          <div style={{ width: 180, height: 3, borderRadius: 99, background: "rgba(var(--ink-rgb),0.06)", overflow: "hidden", position: "relative" }}>
             <div style={{ position: "absolute", top: 0, width: "40%", height: "100%", borderRadius: 99,
               background: "linear-gradient(90deg, transparent, var(--accent), transparent)",
               animation: "barSweep 1.1s ease-in-out infinite" }} />
@@ -2024,7 +3378,7 @@ function App() {
 
       <div className="no-print" style={{
         borderBottom: "1px solid var(--card-border)", padding: "12px 0",
-        background: "rgba(10,13,11,0.9)", backdropFilter: "var(--blur)",
+        background: "var(--header-bg)", backdropFilter: "var(--blur)",
         position: "sticky", top: 0, zIndex: 100,
       }}>
         <div style={{ maxWidth: 1020, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -2038,8 +3392,8 @@ function App() {
             ) : (
               <div style={{
                 width: 32, height: 32, borderRadius: 9, display: "grid", placeItems: "center",
-                background: "linear-gradient(145deg, var(--accent), var(--accent2))", color: "#04231b",
-                fontWeight: 800, fontSize: 17, fontFamily: "'Outfit',sans-serif",
+                background: "linear-gradient(145deg, var(--pop), var(--pop2))", color: "#fff",
+                fontWeight: 800, fontSize: 17, fontFamily: "'Space Grotesk',sans-serif",
               }}>{(config.business.name || "?").charAt(0).toUpperCase()}</div>
             )}
             <div>
@@ -2047,21 +3401,18 @@ function App() {
               <div className="mobile-hide" style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1 }}>{config.business.tagline}</div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ display: "flex", gap: 5 }}>
-              <Badge>{data.clients.length} <span className="mobile-hide">{t.client.many.toLowerCase()}</span></Badge>
-              <Badge>{data.chatters.length} <span className="mobile-hide">{t.staff.many.toLowerCase()}</span></Badge>
-            </div>
-            <button onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings" style={{
-              background: "rgba(255,255,255,0.05)", border: "1px solid var(--card-border)", color: C.textDim,
-              width: 32, height: 32, borderRadius: 9, cursor: "pointer", fontSize: 15, display: "grid", placeItems: "center",
-            }}>⚙</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <ThemeToggle dark={dark} onToggle={toggleTheme} />
+            <AccountMenu />
           </div>
         </div>
       </div>
 
       <div className="no-print" style={{ maxWidth: 1020, margin: "0 auto", padding: "28px 20px 60px" }}>
-        <TabBar active={tab} onChange={setTab} />
+        {config.agencyType === "management" ? (
+          <ManagementApp data={data} persist={persist} config={config} onSettings={() => setSettingsOpen(true)} onInvoice={(payload) => setInvoiceView(payload)} onExport={exportBackup} onImport={handleImportFile} />
+        ) : (<>
+        <TabBar active={tab} onChange={setTab} onSettings={() => setSettingsOpen(true)} />
 
         {/* ═══ DASHBOARD ═══ */}
         {tab === "Dashboard" && (
@@ -2075,26 +3426,38 @@ function App() {
                   value={dashFilterDate === "all" ? "" : dashFilterDate}
                   onChange={(e) => setDashFilterDate(e.target.value || "all")} aria-label="Filter dashboard by date"
                   style={{
-                    padding: "7px 12px", background: "var(--surface)", border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: 9, color: "#fff", fontSize: 13, fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+                    padding: "7px 12px", background: "var(--surface)", border: "1px solid rgba(var(--ink-rgb),0.06)",
+                    borderRadius: 9, color: "var(--ink)", fontSize: 13, fontFamily: "'Space Grotesk',sans-serif", cursor: "pointer"
                   }}
                 />
                 <button
+                  onClick={() => setDashFilterDate(today())}
+                  style={{
+                    padding: "7px 12px", background: dashFilterDate === today() ? "var(--pop-dim)" : "transparent",
+                    border: "1px solid " + (dashFilterDate === today() ? "var(--pop-border)" : "rgba(var(--ink-rgb),0.06)"),
+                    borderRadius: 9, color: dashFilterDate === today() ? "var(--pop)" : "var(--text-dim)", fontSize: 13,
+                    fontFamily: "'Space Grotesk',sans-serif", cursor: "pointer"
+                  }}
+                >Today</button>
+                <button
                   onClick={() => setDashFilterDate("all")}
                   style={{
-                    padding: "7px 12px", background: dashFilterDate === "all" ? "var(--accent-dim)" : "transparent",
-                    border: "1px solid " + (dashFilterDate === "all" ? "var(--accent-border)" : "rgba(255,255,255,0.06)"),
-                    borderRadius: 9, color: dashFilterDate === "all" ? "var(--accent)" : "var(--text-dim)", fontSize: 13,
-                    fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+                    padding: "7px 12px", background: dashFilterDate === "all" ? "var(--pop-dim)" : "transparent",
+                    border: "1px solid " + (dashFilterDate === "all" ? "var(--pop-border)" : "rgba(var(--ink-rgb),0.06)"),
+                    borderRadius: 9, color: dashFilterDate === "all" ? "var(--pop)" : "var(--text-dim)", fontSize: 13,
+                    fontFamily: "'Space Grotesk',sans-serif", cursor: "pointer"
                   }}
                 >All Time</button>
               </div>
             </div>
 
             <div className="mobile-grid" style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
-              <StatCard label={`Total ${t.revenue.many}`} amount={totalSales} accent="var(--accent-glow)" gradient delay={0} />
-              <StatCard label={agencyCutLabel} amount={totalAgency} accent="rgba(var(--accent-rgb),0.08)" delay={70} />
-              <StatCard label={chatterCutLabel} amount={totalChatterPay} accent="rgba(167,139,250,0.10)" delay={140} />
+              <StatCard label={`Total ${t.revenue.many}`} amount={totalSales} accent="rgba(var(--pop-rgb),0.08)" gradient delay={0} delta={salesDelta} />
+              <StatCard label={agencyCutLabel} amount={totalAgency} accent="rgba(var(--pop-rgb),0.06)" delay={70} delta={agencyDelta} />
+              <StatCard label={chatterCutLabel} amount={totalChatterPay} accent="rgba(var(--pop-rgb),0.06)" delay={140} delta={chatterDelta} />
+              {roleTotals.map((rt, i) => (
+                <StatCard key={rt.name} label={rt.name + " pay"} amount={rt.amount} accent="rgba(var(--pop-rgb),0.06)" delay={210 + i * 70} />
+              ))}
             </div>
 
             {isMultiCurrency() && usedCurrencies.length > 1 && (
@@ -2104,13 +3467,22 @@ function App() {
               </div>
             )}
 
-            <RevenueTrend records={data.records} delay={180} />
+            <InsightsPanel highlights={serviceHighlights} delay={150} />
 
-            {totalSales > 0 && <SplitRing total={totalSales} agency={totalAgency} chatter={totalChatterPay} delay={220} />}
+            {totalSales > 0 ? (
+              <div className="dash-bento">
+                <RevenueTrend records={data.records} delay={180} profitOf={(r) => toBase(r.agencyCut || 0, r.currency)} />
+                <SplitRing total={totalSales} agency={totalAgency} chatter={totalChatterPay} extras={roleTotals} chatterLabel={t.staffShareLabel} delay={220} />
+              </div>
+            ) : (
+              <RevenueTrend records={data.records} delay={180} profitOf={(r) => toBase(r.agencyCut || 0, r.currency)} />
+            )}
+
+            <ActivityHeatmap records={data.records} delay={260} />
 
             <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-dim)", marginBottom: 14, letterSpacing: 0.5 }}>By {t.client.one}</h3>
             {clientStats.length === 0 ? (
-              <EmptyState icon="📌" text={`No ${t.client.many.toLowerCase()} yet`} sub={`Add ${t.client.many.toLowerCase()} in the ${t.client.many} tab`} action={<Btn variant="secondary" onClick={() => setTab("Clients")}>Go to {t.client.many} →</Btn>} />
+              <EmptyState icon="users" text={`No ${t.client.many.toLowerCase()} yet`} sub={`Add ${t.client.many.toLowerCase()} in the ${t.client.many} tab`} action={<Btn variant="secondary" onClick={() => setTab("Clients")}>Go to {t.client.many} →</Btn>} />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {clientStats.sort((a, b) => b.total - a.total).map((cl) => {
@@ -2119,7 +3491,7 @@ function App() {
                     <div key={cl.id} className="mobile-p-small" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: 13, padding: "14px 18px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <Avatar name={cl.name} size={32} />
+                          <Avatar name={cl.name} size={32} color={clientColor(cl)} />
                           <div>
                             <span style={{ fontWeight: 600, fontSize: 14 }}>{cl.name}</span>
                             <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: 8 }}>{cl.chatterCount} chatters</span>
@@ -2136,7 +3508,7 @@ function App() {
                               background: C.accentDim, border: "none", borderRadius: 6, color: C.accent,
                               fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600,
                               fontFamily: "'JetBrains Mono',monospace",
-                            }}>📄 Invoice</button>
+                            }}><Icon name="file-text" size={12} style={{ marginRight: 5 }} />Invoice</button>
                           )}
                           {clChatters.some((ch) => ch.chatterPay > 0) && (
                             <button onClick={() => setShareCard({
@@ -2159,15 +3531,15 @@ function App() {
                       {clChatters.map((ch) => (
                         <div key={ch.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0 7px 42px", fontSize: 13 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ color: "rgba(255,255,255,0.55)" }}>{ch.name}</span>
+                            <span style={{ color: "var(--ink)", fontWeight: 600 }}>{ch.name}</span>
                             <span style={{ color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>({ch.count})</span>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: C.accent }}>{fmtIn(ch.total, ch.currency)}</span>
+                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{fmtIn(ch.total, ch.currency)}</span>
                             <span style={{ color: C.textMuted }}>·</span>
-                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.accent2 }}>{fmtIn(ch.agency, ch.currency)}</span>
+                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--text-dim)" }}>{fmtIn(ch.agency, ch.currency)}</span>
                             <span style={{ color: C.textMuted }}>·</span>
-                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.earn }}>{fmtIn(ch.chatterPay, ch.currency)}</span>
+                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, fontWeight: 600, color: "var(--pop)" }}>{fmtIn(ch.chatterPay, ch.currency)}</span>
                             {ch.chatterPay > 0 && (
                               <button onClick={() => setShareCard({
                                 chatters: [{
@@ -2202,20 +3574,7 @@ function App() {
                 <p style={{ color: C.textDim, fontSize: 13 }}>Type amount → Enter adds more. Enter on empty → next chatter.</p>
               </div>
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", flex: "1 1 auto", justifyContent: "flex-end" }} className="mobile-stack">
-                <Btn
-                  variant={isListening ? "primary" : "secondary"}
-                  onClick={toggleVoice}
-                  style={{
-                    marginBottom: 14, fontSize: 12, padding: "8px 16px",
-                    background: isListening ? "rgba(239,68,68,0.2)" : undefined,
-                    color: isListening ? "#ef4444" : undefined,
-                    border: isListening ? "1px solid rgba(239,68,68,0.3)" : undefined,
-                    animation: isListening ? "pulse 1.5s infinite" : undefined,
-                  }}
-                >
-                  {isListening ? "🛑 Stop Voice" : "🎙️ Voice Mode"}
-                </Btn>
-                <Btn variant="secondary" onClick={() => setSmartPasteOpen(true)} style={{ marginBottom: 14, fontSize: 12, padding: "8px 16px" }}>✨ Smart Paste</Btn>
+                <Btn variant="secondary" onClick={() => setSmartPasteOpen(true)} style={{ marginBottom: 14, fontSize: 12, padding: "8px 16px" }}><Icon name="sparkles" size={13} style={{ marginRight: 5 }} />Smart Paste</Btn>
                 <Field label="Client">
                   <select value={salesClientId} aria-label="Select client for sales entry" onChange={(e) => setSalesClientId(e.target.value)} style={{ ...inpStyle, width: 170, cursor: "pointer", background: "var(--surface)" }}>
                     <option value="">Select Client...</option>
@@ -2229,8 +3588,36 @@ function App() {
               </div>
             </div>
 
+            {(() => {
+              const cl = data.clients.find((c) => c.id === salesClientId);
+              const roles = clientRoles(cl);
+              if (!roles.length || !salesChatters.length) return null;
+              return (
+                <div style={{
+                  display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end", marginBottom: 18,
+                  padding: "14px 16px", background: "var(--pop-dim)", border: "1px solid var(--pop-border)", borderRadius: 13,
+                }}>
+                  <div style={{ fontSize: 11.5, color: C.textDim, fontWeight: 600, alignSelf: "center" }}>
+                    Credit extra roles for this batch:
+                  </div>
+                  {roles.map((role) => {
+                    const members = data.chatters.filter((m) => m.clientId === salesClientId && m.roleId === role.id);
+                    return (
+                      <Field key={role.id} label={`${role.name} · ${(role.rate * 100).toFixed(1).replace(/\.0$/, "")}%`}>
+                        <select value={batchRoleStaff[role.id] || ""} onChange={(e) => setBatchRoleStaff((s) => ({ ...s, [role.id]: e.target.value }))}
+                          style={{ ...inpStyle, width: 170, cursor: "pointer", background: "var(--surface)" }}>
+                          <option value="">— none —</option>
+                          {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                      </Field>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             {salesChatters.length === 0 ? (
-              <EmptyState icon="💬" text={!salesClientId ? `Select a ${t.client.one.toLowerCase()} to record ${t.revenue.many.toLowerCase()}` : (salesClientId === "all" ? `No ${t.staff.many.toLowerCase()} yet` : `No ${t.staff.many.toLowerCase()} for this ${t.client.one.toLowerCase()}`)} sub={!salesClientId ? `Choose a ${t.client.one.toLowerCase()} from the dropdown above` : `Add ${t.staff.many.toLowerCase()} in the ${t.client.many} tab`} action={!salesClientId ? null : <Btn variant="secondary" onClick={() => setTab("Clients")}>Go to {t.client.many} →</Btn>} />
+              <EmptyState icon="users" text={!salesClientId ? `Select a ${t.client.one.toLowerCase()} to record ${t.revenue.many.toLowerCase()}` : (salesClientId === "all" ? `No ${t.staff.many.toLowerCase()} yet` : `No ${t.staff.many.toLowerCase()} for this ${t.client.one.toLowerCase()}`)} sub={!salesClientId ? `Choose a ${t.client.one.toLowerCase()} from the dropdown above` : `Add ${t.staff.many.toLowerCase()} in the ${t.client.many} tab`} action={!salesClientId ? null : <Btn variant="secondary" onClick={() => setTab("Clients")}>Go to {t.client.many} →</Btn>} />
             ) : (
               <div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 22 }}>
@@ -2247,8 +3634,8 @@ function App() {
                       <div key={c.id} style={{ marginBottom: 8 }}>
                         <form onSubmit={(e) => handleFormSubmit(e, c.id, vals.length - 1)} className="mobile-p-small" style={{
                           padding: "14px 16px",
-                          background: has ? "rgba(var(--accent-rgb),0.025)" : "rgba(255,255,255,0.012)",
-                          border: "1px solid " + (has ? C.accentBorder : "rgba(255,255,255,0.04)"),
+                          background: has ? "rgba(var(--accent-rgb),0.025)" : "rgba(var(--ink-rgb),0.012)",
+                          border: "1px solid " + (has ? C.accentBorder : "rgba(var(--ink-rgb),0.04)"),
                           borderRadius: 13, transition: "all 0.2s",
                         }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -2264,12 +3651,13 @@ function App() {
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
                             {vals.map((v, idx) => {
                               const key = c.id + "-" + idx;
                               return (
                                 <div key={idx} style={{ position: "relative" }}>
                                   <input
+                                    className="brutal-amt"
                                     ref={(el) => { inputRefs.current[key] = el; }}
                                     type="number" placeholder="0" value={v}
                                     data-chatter-id={c.id}
@@ -2281,28 +3669,25 @@ function App() {
                                     onChange={(e) => setVal(c.id, idx, e.target.value)}
                                     onKeyDown={(e) => handleKeyDown(e, c.id, idx)}
                                     style={{
-                                      width: 90, boxSizing: "border-box", padding: "8px 10px",
+                                      width: 96, boxSizing: "border-box", padding: "8px 10px",
                                       paddingRight: vals.length > 1 ? 24 : 10,
-                                      background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-                                      borderRadius: 7, color: "#fff", fontSize: 14, outline: "none",
-                                      fontFamily: "'JetBrains Mono',monospace", transition: "border-color 0.2s",
+                                      color: "var(--ink)", fontSize: 14, outline: "none",
+                                      fontFamily: "'JetBrains Mono',monospace",
                                     }}
-                                    onFocus={(e) => { e.target.style.borderColor = "rgba(var(--accent-rgb),0.35)"; }}
-                                    onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.07)"; }}
                                   />
                                   {vals.length > 1 && (
                                     <button type="button" onClick={() => removeField(c.id, idx)} aria-label="Remove amount field" style={{
                                       position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)",
-                                      background: "none", border: "none", color: "rgba(255,255,255,0.12)",
+                                      background: "none", border: "none", color: "rgba(var(--ink-rgb),0.12)",
                                       cursor: "pointer", fontSize: 11, padding: "2px 3px",
-                                    }}>✖</button>
+                                    }}><Icon name="x" size={14} /></button>
                                   )}
                                 </div>
                               );
                             })}
                             {usesHours && (
                               <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
-                                <span style={{ fontSize: 11, color: C.textMuted }}>⏱</span>
+                                <span style={{ fontSize: 11, color: C.textMuted, display: "inline-flex" }}><Icon name="clock" size={12} /></span>
                                 <input
                                   type="number" placeholder="hrs" inputMode="decimal"
                                   value={(bulkHours[c.id] || [])[0] || ""}
@@ -2310,8 +3695,8 @@ function App() {
                                   onChange={(e) => setBulkHours((s) => ({ ...s, [c.id]: [e.target.value] }))}
                                   style={{
                                     width: 70, boxSizing: "border-box", padding: "8px 10px",
-                                    background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-                                    borderRadius: 7, color: "#fff", fontSize: 14, outline: "none",
+                                    background: "rgba(var(--ink-rgb),0.03)", border: "1px solid rgba(var(--ink-rgb),0.07)",
+                                    borderRadius: 7, color: "var(--ink)", fontSize: 14, outline: "none",
                                     fontFamily: "'JetBrains Mono',monospace",
                                   }} />
                                 <span style={{ fontSize: 11, color: C.textMuted }}>hrs</span>
@@ -2331,7 +3716,7 @@ function App() {
                                 <div style={{ fontSize: 10, color: C.textDim, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4 }}>TOTAL</div>
                                 <div style={{ fontSize: 20, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmtIn(total, clientCur(client))}</div>
                               </div>
-                              <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.06)" }} />
+                              <div style={{ width: 1, height: 28, background: "rgba(var(--ink-rgb),0.06)" }} />
                               <div>
                                 <div style={{ fontSize: 10, color: C.textDim, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.4 }}>YOU ({partLabel(comm.agency, curInfo(clientCur(client)).symbol)})</div>
                                 <div style={{ fontSize: 14, fontWeight: 600, color: C.accent2, fontFamily: "'JetBrains Mono',monospace" }}>{fmtIn(rowShares.agencyShare, clientCur(client))}</div>
@@ -2347,9 +3732,9 @@ function App() {
                             })} style={{
                               background: "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
                               border: "none", borderRadius: 8, color: "#04231b", padding: "8px 14px",
-                              cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Outfit',sans-serif",
+                              cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Space Grotesk',sans-serif",
                               boxShadow: "0 2px 12px rgba(var(--accent-rgb),0.15)",
-                            }}>📤 Share</button>
+                            }}><Icon name="share" size={12} style={{ marginRight: 5 }} />Share</button>
                           </div>
                         )}
                       </div>
@@ -2378,9 +3763,9 @@ function App() {
                       }} style={{
                         background: "linear-gradient(135deg," + C.accent3 + ",#2a9d38)",
                         border: "none", borderRadius: 7, color: "#04231b", padding: "6px 14px",
-                        cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Outfit',sans-serif",
+                        cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Space Grotesk',sans-serif",
                         boxShadow: "0 2px 10px rgba(var(--accent-rgb),0.12)",
-                      }}>📤 Share All</button>
+                      }}><Icon name="share" size={12} style={{ marginRight: 5 }} />Share All</button>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
                       <span style={{ color: C.textDim, fontSize: 13 }}>Total sales</span>
@@ -2398,7 +3783,7 @@ function App() {
                 )}
 
                 <Btn onClick={saveBulkSales} disabled={!bulkHas} style={{ width: "100%" }}>
-                  {savedFlash ? "✓ Saved!" : `Save All `}
+                  {savedFlash ? "Saved" : `Save All `}
                 </Btn>
                 {savedFlash && (
                   <div style={{ textAlign: "center", marginTop: 10, color: C.accent, fontSize: 13, fontWeight: 500, animation: "fadeIn 0.3s ease" }}>
@@ -2422,32 +3807,32 @@ function App() {
             </div>
 
             {data.clients.length === 0 ? (
-              <EmptyState icon="📌" text={`No ${t.client.many.toLowerCase()} yet`} sub={`Click "Add ${t.client.one}" to get started`} />
+              <EmptyState icon="users" text={`No ${t.client.many.toLowerCase()} yet`} sub={`Click "Add ${t.client.one}" to get started`} />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {data.clients.map((cl, i) => {
                   const ch = data.chatters.filter((c) => c.clientId === cl.id);
                   return (
-                    <div key={cl.id} className="lift rise" style={{ background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 16, padding: "18px 20px", animationDelay: (i * 60) + "ms", boxShadow: "0 12px 30px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+                    <div key={cl.id} className="lift rise" style={{ background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 16, padding: "18px 20px", animationDelay: (i * 60) + "ms", boxShadow: "0 12px 30px rgba(0,0,0,0.26), inset 0 1px 0 rgba(var(--ink-rgb),0.04)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: ch.length ? 12 : 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                          <Avatar name={cl.name} size={40} />
+                          <Avatar name={cl.name} size={40} color={clientColor(cl)} />
                           <div>
                             <div style={{ fontWeight: 600, fontSize: 16 }}>{cl.name}</div>
-                            <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{ch.length} chatters</div>
+                            <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{ch.length} {ch.length === 1 ? t.staff.one.toLowerCase() : t.staff.many.toLowerCase()}{clientRoles(cl).length ? " · " + clientRoles(cl).length + " extra " + (clientRoles(cl).length === 1 ? "role" : "roles") : ""}</div>
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 8 }}>
                           <button onClick={() => setEditingClient(cl)} style={{
-                            background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+                            background: "rgba(var(--ink-rgb),0.05)", border: "1px solid rgba(var(--ink-rgb),0.1)",
                             borderRadius: 8, color: C.textDim, padding: "7px 12px", cursor: "pointer",
-                            fontSize: 11, fontWeight: 600, fontFamily: "'Outfit',sans-serif",
-                          }}>⚙️ Settings</button>
+                            fontSize: 11, fontWeight: 600, fontFamily: "'Space Grotesk',sans-serif",
+                          }}><Icon name="settings" size={12} style={{ marginRight: 5 }} />Settings</button>
                           <Btn variant="secondary" onClick={() => { setChatterClientId(cl.id); setAddChatterOpen(true); }} style={{ padding: "7px 14px", fontSize: 12 }}>+ {t.staff.one}</Btn>
                           <button onClick={() => setDeleteConfirm({ type: "client", id: cl.id })} style={{
                             background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.12)",
                             borderRadius: 8, color: "#ef4444", padding: "7px 12px", cursor: "pointer",
-                            fontSize: 11, fontWeight: 600, fontFamily: "'Outfit',sans-serif",
+                            fontSize: 11, fontWeight: 600, fontFamily: "'Space Grotesk',sans-serif",
                           }}>Remove</button>
                         </div>
                       </div>
@@ -2456,17 +3841,20 @@ function App() {
                           {ch.map((c) => (
                             <div key={c.id} className="chrow" style={{
                               display: "flex", justifyContent: "space-between", alignItems: "center",
-                              padding: "8px 12px", background: "rgba(255,255,255,0.012)", borderRadius: 9,
-                              border: "1px solid rgba(255,255,255,0.025)",
+                              padding: "8px 12px", background: "rgba(var(--ink-rgb),0.012)", borderRadius: 9,
+                              border: "1px solid rgba(var(--ink-rgb),0.025)",
                             }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                                 <Avatar name={c.name} size={28} />
                                 <span style={{ fontSize: 13, fontWeight: 500 }}>{c.name}</span>
+                                {memberRoleName(c) && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: "var(--pop)", background: "var(--pop-dim)", border: "1px solid var(--pop-border)", padding: "1px 7px", borderRadius: 999, fontFamily: "'JetBrains Mono',monospace" }}>{memberRoleName(c)}</span>
+                                )}
                               </div>
                               <button onClick={() => setDeleteConfirm({ type: "chatter", id: c.id })} style={{
-                                background: "none", border: "none", color: "rgba(255,255,255,0.12)",
+                                background: "none", border: "none", color: "rgba(var(--ink-rgb),0.12)",
                                 cursor: "pointer", fontSize: 13, padding: "2px 6px",
-                              }}>✖</button>
+                              }}><Icon name="x" size={14} /></button>
                             </div>
                           ))}
                         </div>
@@ -2489,10 +3877,10 @@ function App() {
               </div>
               <div style={{ display: "flex", gap: 8, width: "100%", justifyContent: "flex-end", maxWidth: "min-content" }}>
                 <Btn variant="secondary" onClick={() => exportCSV(filteredRecords)} style={{ fontSize: 12, padding: "8px 14px", display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
-                  📥 Export
+                  <Icon name="download" size={13} />Export
                 </Btn>
                 <Btn variant="secondary" onClick={printReport} style={{ fontSize: 12, padding: "8px 14px", display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
-                  🖨️ Print
+                  <Icon name="printer" size={13} />Print
                 </Btn>
               </div>
             </div>
@@ -2510,8 +3898,8 @@ function App() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <Btn variant="secondary" onClick={exportBackup} style={{ fontSize: 12, padding: "8px 14px" }}>⬇ Save backup</Btn>
-                <Btn variant="secondary" onClick={() => importRef.current && importRef.current.click()} style={{ fontSize: 12, padding: "8px 14px" }}>⬆ Restore</Btn>
+                <Btn variant="secondary" onClick={exportBackup} style={{ fontSize: 12, padding: "8px 14px" }}><Icon name="download" size={13} style={{ marginRight: 5 }} />Save backup</Btn>
+                <Btn variant="secondary" onClick={() => importRef.current && importRef.current.click()} style={{ fontSize: 12, padding: "8px 14px" }}><Icon name="upload" size={13} style={{ marginRight: 5 }} />Restore</Btn>
                 <input ref={importRef} type="file" accept="application/json,.json" onChange={handleImportFile} style={{ display: "none" }} aria-hidden="true" />
               </div>
             </div>
@@ -2587,13 +3975,13 @@ function App() {
                       <div style={{ color: C.earn, fontSize: 12 }}>{fmtIn(r.chatterCut, r.currency)}</div>
                       <div className="no-print" style={{ display: "flex", gap: 2, gridColumn: "7", justifyContent: "flex-end" }}>
                         <button onClick={() => setEditRecord(r)} aria-label="Edit sale" title="Edit" style={{
-                          background: "none", border: "none", color: "rgba(255,255,255,0.35)",
+                          background: "none", border: "none", color: "rgba(var(--ink-rgb),0.35)",
                           cursor: "pointer", fontSize: 13, padding: 3, borderRadius: 5,
-                        }}>✎</button>
+                        }}><Icon name="edit" size={13} /></button>
                         <button onClick={() => deleteRecord(r)} aria-label="Delete sale" title="Delete" style={{
                           background: "none", border: "none", color: "rgba(239,68,68,0.45)",
                           cursor: "pointer", fontSize: 14, padding: 3, borderRadius: 5,
-                        }}>✖</button>
+                        }}><Icon name="x" size={14} /></button>
                       </div>
                     </div>
                   ))}
@@ -2602,6 +3990,14 @@ function App() {
             </div>
           </div>
         )}
+
+        {tab === "Invoices" && (
+          <div style={{ animation: "slideUp 0.3s ease" }}>
+            <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 20 }}>Invoices</h2>
+            <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} />
+          </div>
+        )}
+        </>)}
       </div>
 
       {/* ── MODALS ── */}
@@ -2631,13 +4027,13 @@ function App() {
 
       <Modal open={addChatterOpen} onClose={() => setAddChatterOpen(false)} title={`Add ${t.staff.one}`}>
         <Field label={t.client.one}>
-          <select value={chatterClientId} onChange={(e) => setChatterClientId(e.target.value)}
-            style={{ ...inpStyle, cursor: "pointer", background: "#151916" }}>
+          <select value={chatterClientId} onChange={(e) => { setChatterClientId(e.target.value); }}
+            style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
             <option value="">Select {t.client.one.toLowerCase()}...</option>
             {data.clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
           </select>
         </Field>
-        <Field label={`${t.staff.one} Name`}>
+        <Field label="Name">
           <input type="text" placeholder="Enter name..." value={newChatterName}
             onChange={(e) => setNewChatterName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addChatter(); }}
@@ -2664,6 +4060,22 @@ function App() {
                 <CurrencySelect value={editClientCurrency} onChange={setEditClientCurrency} />
               </Field>
             )}
+            <Field label="Avatar color">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <Avatar name={editingClient.name} size={36} color={editClientColor} />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {CLIENT_COLORS.map((col) => (
+                    <button key={col} type="button" onClick={() => setEditClientColor(col)} aria-label={"Use color " + col}
+                      style={{
+                        width: 26, height: 26, borderRadius: 8, background: col, cursor: "pointer", padding: 0,
+                        border: editClientColor === col ? "2px solid var(--ink)" : "2px solid transparent",
+                        boxShadow: editClientColor === col ? "inset 0 0 0 2px #fff" : "0 1px 3px rgba(var(--ink-rgb),0.18)",
+                        transition: "transform .15s ease",
+                      }} />
+                  ))}
+                </div>
+              </div>
+            </Field>
             {(() => {
               const example = 1000;
               const ag = computeShare(editAgencyPart, example, 10);
@@ -2687,9 +4099,9 @@ function App() {
       <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title={"Remove " + (deleteConfirm ? (deleteConfirm.type === "client" ? "Client" : "Chatter") : "")}>
         <p style={{ color: C.textDim, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
           {deleteConfirm && deleteConfirm.type === "client"
-            ? <span>Remove <strong style={{ color: "#fff" }}>{clientNameFn(deleteConfirm.id)}</strong> and all its chatters and records?</span>
+            ? <span>Remove <strong style={{ color: "var(--ink)" }}>{clientNameFn(deleteConfirm.id)}</strong> and all its chatters and records?</span>
             : deleteConfirm
-              ? <span>Remove <strong style={{ color: "#fff" }}>{chatterNameFn(deleteConfirm.id)}</strong> and all their records?</span>
+              ? <span>Remove <strong style={{ color: "var(--ink)" }}>{chatterNameFn(deleteConfirm.id)}</strong> and all their records?</span>
               : null
           }
         </p>
@@ -2699,7 +4111,7 @@ function App() {
             padding: "11px 22px", background: "rgba(239,68,68,0.12)",
             border: "1px solid rgba(239,68,68,0.2)", borderRadius: 11,
             color: "#ef4444", fontSize: 14, fontWeight: 600, cursor: "pointer",
-            fontFamily: "'Outfit',sans-serif",
+            fontFamily: "'Space Grotesk',sans-serif",
           }}>Remove</button>
         </div>
       </Modal>
@@ -2709,7 +4121,7 @@ function App() {
 
       {settingsOpen && <SettingsPanel initial={config} onClose={() => setSettingsOpen(false)} onSave={saveConfig} />}
 
-      {invoiceView && <InvoiceView {...invoiceView} onClose={() => setInvoiceView(null)} onOpenSettings={() => setSettingsOpen(true)} />}
+      {invoiceView && <InvoiceView {...invoiceView} invoices={data.invoices || []} onUpsertInvoice={upsertInvoice} onClose={() => setInvoiceView(null)} onOpenSettings={() => setSettingsOpen(true)} />}
 
       {/* Edit a single sale record */}
       <Modal open={!!editRecord} onClose={() => setEditRecord(null)} title="Edit sale">
@@ -2766,12 +4178,12 @@ function App() {
           <button onClick={undoDelete} style={{
             background: C.accentDim, border: "1px solid " + C.accentBorder, color: C.accent,
             borderRadius: 7, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700,
-            fontFamily: "'Outfit',sans-serif",
+            fontFamily: "'Space Grotesk',sans-serif",
           }}>Undo</button>
         </div>
       )}
 
-      <Modal open={smartPasteOpen} onClose={() => setSmartPasteOpen(false)} title={`✨ Smart Paste `}>
+      <Modal open={smartPasteOpen} onClose={() => setSmartPasteOpen(false)} title="Smart Paste">
         <p style={{ fontSize: 13, color: C.textDim, marginBottom: 12, lineHeight: 1.5 }}>
           Paste raw reports or chat logs here. We'll automatically find chatter names and their sales.
         </p>
@@ -2781,7 +4193,7 @@ function App() {
             borderRadius: 12, padding: "10px 14px", marginBottom: 16, color: "#fbbf24", fontSize: 13,
             display: "flex", alignItems: "center", gap: 8
           }}>
-            <span>⚠️</span>
+            <span style={{ display: "inline-flex", color: "#CA8A04" }}><Icon name="alert" size={14} /></span>
             <span>Please select a {t.client.one.toLowerCase()} in the "Record {t.revenue.many}" tab first.</span>
           </div>
         )}
@@ -2791,7 +4203,7 @@ function App() {
           placeholder="e.g. John: $450.00&#10;Sarah had a great day with 250..."
           style={{
             ...inpStyle, height: 180, resize: "none", fontSize: 13, lineHeight: 1.6,
-            background: "rgba(255,255,255,0.02)", marginBottom: 16,
+            background: "rgba(var(--ink-rgb),0.02)", marginBottom: 16,
           }}
         />
 
@@ -2806,9 +4218,8 @@ function App() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {reviewItems.map((it) => (
-                <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10, opacity: it.included ? 1 : 0.4 }}>
-                  <input type="checkbox" checked={it.included} onChange={() => toggleReviewItem(it.id)}
-                    aria-label={"Include " + it.name} style={{ width: 16, height: 16, accentColor: "var(--accent)", cursor: "pointer" }} />
+                <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 14, opacity: it.included ? 1 : 0.4 }}>
+                  <BrutalCheck checked={it.included} onChange={() => toggleReviewItem(it.id)} ariaLabel={"Include " + it.name} />
                   <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{it.name}</span>
                   {it.count > 1 && (
                     <span title={it.count + " numbers were added together — check this is right"}
@@ -2822,14 +4233,14 @@ function App() {
                       onChange={(e) => setReviewAmount(it.id, e.target.value)}
                       disabled={!it.included}
                       aria-label={it.name + " detected amount"}
-                      style={{ width: 110, padding: "6px 8px 6px 18px", background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.08)", borderRadius: 7, color: C.accent, fontSize: 13,
+                      style={{ width: 110, padding: "6px 8px 6px 18px", background: "rgba(var(--ink-rgb),0.04)",
+                        border: "1px solid rgba(var(--ink-rgb),0.08)", borderRadius: 7, color: C.accent, fontSize: 13,
                         fontFamily: "'JetBrains Mono',monospace", outline: "none", textAlign: "right" }} />
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(var(--ink-rgb),0.06)" }}>
               <span style={{ fontSize: 12, color: C.textDim }}>Total to add</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>
                 {fmt(reviewItems.reduce((s, it) => s + (it.included ? (parseFloat(it.amount) || 0) : 0), 0))}
