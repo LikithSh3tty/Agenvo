@@ -12,11 +12,16 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   updateProfile,
   signOut,
   sendPasswordResetEmail,
+  deleteUser,
 } from "firebase/auth";
-import { auth } from "./firebase.js";
+import { doc, deleteDoc } from "firebase/firestore";
+import { auth, db } from "./firebase.js";
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
@@ -42,6 +47,9 @@ const MESSAGES = {
   "auth/operation-not-allowed": "This sign-in method isn't enabled for the project yet.",
   "auth/account-exists-with-different-credential": "This email is already linked to a different sign-in method.",
   "auth/unauthorized-domain": "This domain isn't authorized for sign-in. Add it in Firebase Auth settings.",
+  "auth/missing-password": "Enter your password to confirm.",
+  "auth/no-current-user": "You're not signed in.",
+  "auth/requires-recent-login": "Please sign in again to confirm this change.",
 };
 
 class AuthError extends Error {
@@ -100,6 +108,42 @@ export async function sendReset(email) {
 export async function signOutUser() {
   try {
     await signOut(auth);
+  } catch (e) {
+    throw new AuthError(e);
+  }
+}
+
+// Which sign-in method the current user used ("password" | "google.com" | null).
+// Drives whether account deletion asks for a password or re-opens the Google popup.
+export function getProviderId() {
+  const u = auth.currentUser;
+  return u?.providerData?.[0]?.providerId || (u ? "password" : null);
+}
+
+// Permanently delete the signed-in user's account and their workspace data.
+// Firebase requires a recent login for deletion, so we re-authenticate first
+// (password prompt for email users, popup for Google), then remove the Firestore
+// document while still authenticated, then delete the auth account.
+export async function deleteAccount({ password } = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new AuthError({ code: "auth/no-current-user" });
+  const providerId = user.providerData?.[0]?.providerId || "password";
+
+  try {
+    if (providerId === "password") {
+      if (!password) throw new AuthError({ code: "auth/missing-password" });
+      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password));
+    } else {
+      await reauthenticateWithPopup(user, googleProvider);
+    }
+  } catch (e) {
+    throw e instanceof AuthError ? e : new AuthError(e);
+  }
+
+  try { await deleteDoc(doc(db, "users", user.uid)); } catch { /* best effort — orphaned data is denied to everyone by rules */ }
+
+  try {
+    await deleteUser(user);
   } catch (e) {
     throw new AuthError(e);
   }

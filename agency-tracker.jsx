@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from "react";
 import AccountMenu from "./src/auth/AccountMenu.jsx";
+import DeleteAccountSection from "./src/auth/DeleteAccountSection.jsx";
 
 const STORAGE_KEY = "fanlink-tracker-v4";
 const THEME_KEY = "agencyx-theme"; // "light" | "dark"; falls back to OS preference
@@ -1672,6 +1673,8 @@ function SettingsPanel({ initial, onClose, onSave }) {
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={save}>Save settings</Btn>
         </div>
+
+        <DeleteAccountSection />
       </div>
     </div>
   );
