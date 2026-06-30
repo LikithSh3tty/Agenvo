@@ -4,53 +4,62 @@
 // The app talks to a tiny `window.storage` interface ({ get(key), set(key,value) }).
 // installUserStorage(uid) swaps that interface for a Firestore-backed one scoped to
 // the signed-in user (document `users/{uid}`), so each account has isolated data that
-// follows them across devices. Writes mirror to localStorage as an offline cache, and
-// a live listener pushes changes made on other devices into the running app.
+// follows them across devices.
+//
+// IMPORTANT: localStorage is shared by every account on a browser, so the offline
+// cache is namespaced per-uid (`agencyx:{uid}:{key}`). One account can never read
+// another's cached data, even after signing out on the same device.
 // ─────────────────────────────────────────────────────────────────────────────
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase.js";
 
-// Keys the app persists through window.storage. We migrate these from localStorage
-// the first time a user signs in on a device that already has local data.
-const MIGRATE_KEYS = ["fanlink-tracker-v4", "agencyx-theme"];
+const STORAGE_KEY = "fanlink-tracker-v4"; // workspace data blob
+const THEME_KEY = "agencyx-theme";        // light/dark preference
+const KEYS = [STORAGE_KEY, THEME_KEY];
+const LEGACY_CLAIMED = "agencyx:legacy-claimed"; // one-time guard for pre-Firebase data
 
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* quota / privacy mode */ } };
+const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } };
 
 export async function installUserStorage(uid) {
   const ref = doc(db, "users", uid);
 
-  // In-memory cache of key -> string value, hydrated from Firestore (falling back to
-  // any local data) before the app reads anything.
-  const cache = {};
-  // Track what this tab last wrote per key so the live listener can ignore its own echoes.
-  const lastWritten = {};
-  // Debounce timers per key so rapid edits collapse into one Firestore write.
-  const timers = {};
+  // Per-user cache key. Theme stays on the shared key (benign — it only lets the
+  // login screen show the last-used theme); workspace data is namespaced per uid so
+  // a different account on the same device never sees stale data.
+  const localKey = (key) => (key === THEME_KEY ? key : `agencyx:${uid}:${key}`);
 
-  // ── Hydrate ────────────────────────────────────────────────────────────────
+  const cache = {};         // key -> string value, hydrated before the app reads
+  const lastWritten = {};   // dedupe the live listener against this tab's own writes
+  const timers = {};        // per-key debounce timers
+
+  // ── Hydrate: cloud is the source of truth, else this user's own local cache ──
   let remote = {};
   try {
     const snap = await getDoc(ref);
     remote = (snap.exists() && snap.data().data) || {};
   } catch { remote = {}; }
 
-  let needsSeed = false;
-  for (const key of MIGRATE_KEYS) {
-    if (remote[key] != null) {
-      cache[key] = remote[key];
-      lsSet(key, remote[key]); // refresh local cache from cloud
-    } else {
-      const local = lsGet(key);
-      if (local != null) { cache[key] = local; needsSeed = true; } // migrate local -> cloud
-    }
+  for (const key of KEYS) {
+    if (remote[key] != null) { cache[key] = remote[key]; lsSet(localKey(key), remote[key]); }
+    else { const local = lsGet(localKey(key)); if (local != null) cache[key] = local; }
   }
 
-  // First sign-in with existing local data: push it up so nothing is lost.
-  if (needsSeed) {
-    const seed = {};
-    for (const key of MIGRATE_KEYS) if (cache[key] != null) { seed[key] = cache[key]; lastWritten[key] = cache[key]; }
-    try { await setDoc(ref, { data: seed, updatedAt: serverTimestamp() }, { merge: true }); } catch { /* offline; will retry on next write */ }
+  // ── One-time legacy claim ────────────────────────────────────────────────────
+  // Data created before per-user storage lived under the bare key. The FIRST account
+  // to sign in after the upgrade adopts it (only if it has no data of its own); the
+  // bare key is then removed so it can never leak into another account.
+  if (!lsGet(LEGACY_CLAIMED)) {
+    const legacy = lsGet(STORAGE_KEY); // bare, pre-namespace key
+    if (legacy != null && cache[STORAGE_KEY] == null) {
+      cache[STORAGE_KEY] = legacy;
+      lsSet(localKey(STORAGE_KEY), legacy);
+      lastWritten[STORAGE_KEY] = legacy;
+      try { await setDoc(ref, { data: { [STORAGE_KEY]: legacy }, updatedAt: serverTimestamp() }, { merge: true }); } catch { /* offline; retries on next write */ }
+    }
+    lsSet(LEGACY_CLAIMED, "1");
+    lsDel(STORAGE_KEY); // retire the shared bare key regardless
   }
 
   // ── Live cross-device sync ───────────────────────────────────────────────────
@@ -61,8 +70,7 @@ export async function installUserStorage(uid) {
       const incoming = data[key];
       if (incoming === lastWritten[key] || incoming === cache[key]) continue; // unchanged / our echo
       cache[key] = incoming;
-      lsSet(key, incoming);
-      // Let the app react to changes made on another device.
+      lsSet(localKey(key), incoming);
       try { window.dispatchEvent(new CustomEvent("agencyx:remote", { detail: { key, value: incoming } })); } catch { /* ignore */ }
     }
   });
@@ -76,12 +84,12 @@ export async function installUserStorage(uid) {
   // ── window.storage implementation ────────────────────────────────────────────
   window.storage = {
     async get(key) {
-      const v = cache[key] != null ? cache[key] : lsGet(key);
+      const v = cache[key] != null ? cache[key] : lsGet(localKey(key));
       return { value: v };
     },
     async set(key, value) {
       cache[key] = value;
-      lsSet(key, value);            // instant local cache
+      lsSet(localKey(key), value);   // instant per-user local cache
       clearTimeout(timers[key]);
       timers[key] = setTimeout(() => writeKey(key, value), 400); // debounced cloud write
     },
