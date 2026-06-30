@@ -55,7 +55,7 @@ export default function AccountMenu() {
       role="menu"
       style={{
         position: "fixed", top: coords.top, right: coords.right, zIndex: 5000,
-        minWidth: 220, background: "var(--card)", border: "1px solid var(--card-border)",
+        minWidth: 220, background: "var(--card-bg)", border: "1px solid var(--card-border)",
         borderRadius: 12, boxShadow: "0 18px 44px rgba(var(--ink-rgb),0.16)",
         padding: 6, animation: "slideUp 0.18s ease",
       }}
