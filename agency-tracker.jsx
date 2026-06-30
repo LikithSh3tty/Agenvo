@@ -2181,7 +2181,7 @@ function ManagementApp({ data, persist, config, onSettings, onInvoice, onExport,
     if (!curM || !prevM) return null;
     const cur = valFn(entries.filter((e) => mMonthKey(e.date) === curM));
     const prev = valFn(entries.filter((e) => mMonthKey(e.date) === prevM));
-    if (prev <= 0) return null;
+    if (prev <= 0 || cur <= 0) return null; // no activity this month yet → don't show a false -100%
     return Math.round(((cur - prev) / prev) * 100);
   };
   const showDelta = monthFilter === "all"; // deltas only make sense on the all-time view
@@ -3139,7 +3139,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     const lastKey = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, "0")}`;
     const sumMo = (k) => sumMoney(data.records.filter((r) => (r.date || "").slice(0, 7) === k), (r) => toBase(r.amount, r.currency));
     const thisMo = sumMo(thisKey), lastMo = sumMo(lastKey);
-    if (lastMo <= 0) return null;
+    if (lastMo <= 0 || thisMo <= 0) return null; // no sales yet this month → not a -100% crash, just early
     return Math.round(((thisMo - lastMo) / lastMo) * 100);
   })();
   // Month-over-month deltas for the agency-cut and staff-pay cards (same all-time gating).
@@ -3151,7 +3151,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     const lastKey = `${lm.getFullYear()}-${String(lm.getMonth() + 1).padStart(2, "0")}`;
     const sumMo = (k) => sumMoney(data.records.filter((r) => (r.date || "").slice(0, 7) === k), (r) => toBase(r[field], r.currency));
     const t1 = sumMo(thisKey), l1 = sumMo(lastKey);
-    if (l1 <= 0) return null;
+    if (l1 <= 0 || t1 <= 0) return null; // hide month-over-month until this month has activity
     return Math.round(((t1 - l1) / l1) * 100);
   };
   const agencyDelta = moDelta("agencyCut");
