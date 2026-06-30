@@ -1535,6 +1535,35 @@ const SettingsSection = ({ title, children }) => (
 );
 const SettingsRow = ({ children }) => <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{children}</div>;
 
+// Read an image File, downscale it to fit `maxSize` px, and return a compact PNG
+// data URL. Keeping logos small matters because they're stored inside the user's
+// Firestore document (1 MiB cap). PNG preserves transparency for real logos.
+function fileToLogoDataUrl(file, maxSize = 256) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type || !file.type.startsWith("image/")) { reject(new Error("Please choose an image file.")); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read that file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("That image couldn't be loaded."));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Couldn't process that image.")); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL("image/png")); }
+        catch { reject(new Error("Couldn't process that image.")); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function SettingsPanel({ initial, onClose, onSave, onResetData }) {
   const [d, setD] = useState(() => JSON.parse(JSON.stringify(initial)));
   const setB = (k, v) => setD((s) => ({ ...s, business: { ...s.business, [k]: v } }));
@@ -1543,6 +1572,17 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
   const setInv = (k, v) => setD((s) => ({ ...s, invoice: { ...s.invoice, [k]: v } }));
   const setTerm = (grp, sub, v) => setD((s) => ({ ...s, terms: { ...s.terms, [grp]: { ...s.terms[grp], [sub]: v } } }));
   const setTermFlat = (k, v) => setD((s) => ({ ...s, terms: { ...s.terms, [k]: v } }));
+
+  const [logoErr, setLogoErr] = useState("");
+  const onLogoFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setLogoErr("");
+    if (file.size > 3 * 1024 * 1024) { setLogoErr("Image is too large (max 3 MB). Pick a smaller file."); return; }
+    try { setB("logo", await fileToLogoDataUrl(file)); }
+    catch (err) { setLogoErr(err.message || "Couldn't use that image."); }
+  };
 
   const save = () => {
     const out = JSON.parse(JSON.stringify(d));
@@ -1585,7 +1625,24 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
         <SettingsSection title="Business">
           <Field label="Business name"><input style={inpStyle} value={d.business.name} onChange={(e) => setB("name", e.target.value)} /></Field>
           <Field label="Tagline"><input style={inpStyle} value={d.business.tagline} onChange={(e) => setB("tagline", e.target.value)} /></Field>
-          <Field label="Logo URL (blank = use initial letter)"><input style={inpStyle} value={d.business.logo} onChange={(e) => setB("logo", e.target.value)} placeholder="/logo.svg or https://..." /></Field>
+          <Field label="Logo (upload from device, or paste a URL — blank = use initial letter)">
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+              {d.business.logo ? (
+                <img src={d.business.logo} alt="Logo preview" style={{ width: 46, height: 46, borderRadius: 11, objectFit: "contain", background: "rgba(var(--ink-rgb),0.04)", border: "1px solid var(--field-border)", flex: "none" }} />
+              ) : (
+                <div style={{ width: 46, height: 46, borderRadius: 11, flex: "none", display: "grid", placeItems: "center", background: "linear-gradient(145deg, var(--pop), var(--pop2))", color: "#fff", fontWeight: 800, fontSize: 20, fontFamily: "'Space Grotesk',sans-serif" }}>{(d.business.name || "?").charAt(0).toUpperCase()}</div>
+              )}
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", color: "var(--accent)", borderRadius: 8, padding: "8px 13px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                <Icon name="upload" size={14} /> Upload logo
+                <input type="file" accept="image/*" onChange={onLogoFile} style={{ display: "none" }} />
+              </label>
+              {d.business.logo && (
+                <button type="button" onClick={() => { setB("logo", ""); setLogoErr(""); }} style={{ background: "none", border: "1px solid var(--field-border)", color: C.textDim, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Remove</button>
+              )}
+            </div>
+            <input style={inpStyle} value={d.business.logo && d.business.logo.startsWith("data:") ? "" : d.business.logo} onChange={(e) => setB("logo", e.target.value)} placeholder="…or paste an image URL (https://…)" />
+            {logoErr && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 6 }}>{logoErr}</div>}
+          </Field>
           <Field label="Address (one line per row, shown on invoices)">
             <textarea style={{ ...inpStyle, minHeight: 90, resize: "vertical", fontFamily: "'Space Grotesk',sans-serif" }} value={addressStr} onChange={(e) => setB("address", e.target.value)} />
           </Field>
@@ -1879,7 +1936,7 @@ function InsightsPanel({ highlights = [], delay = 0 }) {
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 3, letterSpacing: 0.3, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>{it.label}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              <div title={String(it.value)} style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3, overflowWrap: "anywhere",
                 color: it.tone === "good" ? C.earn : it.tone === "bad" ? "#ef4444" : "var(--ink)" }}>{it.value}</div>
             </div>
           </div>
