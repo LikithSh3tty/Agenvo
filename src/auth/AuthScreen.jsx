@@ -44,6 +44,14 @@ export default function AuthScreen() {
   const T = useTheme();
   const { signIn, signUp, signInWithGoogle, sendReset } = useAuth();
 
+  // Let the front door breathe: the ledger-paper page and wordmark render first,
+  // then the auth card drops in after a beat instead of confronting immediately.
+  const [showCard, setShowCard] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShowCard(true), 2000);
+    return () => clearTimeout(t);
+  }, []);
+
   const [mode, setMode] = useState("login"); // "login" | "signup"
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -180,8 +188,27 @@ export default function AuthScreen() {
     .lx-spin.dark{ border-color:rgba(20,20,20,.25); border-top-color:var(--ink); }
     @keyframes lxSpin{ to{ transform:rotate(360deg); } }
 
+    .lx-hero{ text-align:center; animation:lxFade .6s ease both; }
+    .lx-hero-word{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:44px; letter-spacing:-.03em;
+      display:flex; align-items:center; justify-content:center; gap:12px; }
+    .lx-hero-word i{ width:18px; height:18px; background:var(--stamp); border-radius:2px; }
+    .lx-hero-sub{ margin-top:12px; font-size:11px; letter-spacing:2.5px; color:var(--sub); }
+    @keyframes lxFade{ from{ opacity:0; } to{ opacity:1; } }
+
     @media (prefers-reduced-motion: reduce){ .lx *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
   `, [T]);
+
+  if (!showCard) {
+    return (
+      <div className="lx">
+        <style>{css}</style>
+        <div className="lx-hero">
+          <div className="lx-hero-word">agencyx<i aria-hidden="true" /></div>
+          <div className="lx-hero-sub lx-mono">REVENUE · COMMISSIONS · INVOICES</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="lx">
