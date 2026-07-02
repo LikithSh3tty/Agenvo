@@ -76,6 +76,93 @@ const toBase = (amount, code) => money((Number(amount) || 0) * (curInfo(code).ra
 // A client's currency code (defaults to base).
 const clientCur = (client) => String((client && client.currency) || currencyReg.base).toUpperCase();
 
+// ── Numeric input hygiene ───────────────────────────────────────────
+// Sanitize a decimal string as the user types: digits and a single dot only,
+// and no leading zeros ("05" → "5", "0.5" stays "0.5"). Amounts here are never
+// negative, so "-" is stripped too.
+const numClean = (s, { integer = false } = {}) => {
+  let v = String(s ?? "").replace(/[^\d.]/g, "");
+  if (integer) v = v.replace(/\./g, "");
+  const i = v.indexOf(".");
+  if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, "");
+  return v.replace(/^0+(?=\d)/, "");
+};
+
+// Controlled numeric input that never shows a stale leading zero. React skips
+// syncing a focused type="number" input when Number(domValue) equals the state
+// value, so "05" would stay on screen; this keeps a sanitized string draft while
+// focused instead, and reports the sanitized string via onChange (parents that
+// store numbers call Number() on it).
+function NumInput({ value, onChange, integer = false, ...rest }) {
+  const [draft, setDraft] = useState(null);
+  return (
+    <input {...rest} type="text" inputMode="decimal"
+      value={draft !== null ? draft : (value ?? "")}
+      onFocus={(e) => { setDraft(numClean(e.target.value, { integer })); rest.onFocus && rest.onFocus(e); }}
+      onBlur={(e) => { setDraft(null); rest.onBlur && rest.onBlur(e); }}
+      onChange={(e) => { const v = numClean(e.target.value, { integer }); setDraft(v); onChange(v); }} />
+  );
+}
+
+// ── Currency catalog ────────────────────────────────────────────────
+// Common currencies for the pickers: symbol, display locale, and unit words
+// (words feed "amount in words" on invoices). Exchange rates come live from
+// the API below, never from this table.
+const CURRENCY_CATALOG = [
+  ["USD", "US Dollar", "$", "en-US", "Dollars", "Cents"],
+  ["EUR", "Euro", "€", "de-DE", "Euros", "Cents"],
+  ["GBP", "British Pound", "£", "en-GB", "Pounds", "Pence"],
+  ["INR", "Indian Rupee", "₹", "en-IN", "Rupees", "Paise"],
+  ["AUD", "Australian Dollar", "A$", "en-AU", "Dollars", "Cents"],
+  ["CAD", "Canadian Dollar", "C$", "en-CA", "Dollars", "Cents"],
+  ["SGD", "Singapore Dollar", "S$", "en-SG", "Dollars", "Cents"],
+  ["AED", "UAE Dirham", "AED", "ar-AE", "Dirhams", "Fils"],
+  ["JPY", "Japanese Yen", "¥", "ja-JP", "Yen", "Sen"],
+  ["CNY", "Chinese Yuan", "¥", "zh-CN", "Yuan", "Fen"],
+  ["CHF", "Swiss Franc", "CHF", "de-CH", "Francs", "Rappen"],
+  ["NZD", "New Zealand Dollar", "NZ$", "en-NZ", "Dollars", "Cents"],
+  ["HKD", "Hong Kong Dollar", "HK$", "zh-HK", "Dollars", "Cents"],
+  ["KRW", "South Korean Won", "₩", "ko-KR", "Won", "Jeon"],
+  ["SEK", "Swedish Krona", "kr", "sv-SE", "Kronor", "Öre"],
+  ["NOK", "Norwegian Krone", "kr", "nb-NO", "Kroner", "Øre"],
+  ["DKK", "Danish Krone", "kr", "da-DK", "Kroner", "Øre"],
+  ["PLN", "Polish Złoty", "zł", "pl-PL", "Złoty", "Groszy"],
+  ["TRY", "Turkish Lira", "₺", "tr-TR", "Lira", "Kuruş"],
+  ["RUB", "Russian Ruble", "₽", "ru-RU", "Rubles", "Kopecks"],
+  ["BRL", "Brazilian Real", "R$", "pt-BR", "Reais", "Centavos"],
+  ["MXN", "Mexican Peso", "MX$", "es-MX", "Pesos", "Centavos"],
+  ["ZAR", "South African Rand", "R", "en-ZA", "Rand", "Cents"],
+  ["IDR", "Indonesian Rupiah", "Rp", "id-ID", "Rupiah", "Sen"],
+  ["MYR", "Malaysian Ringgit", "RM", "ms-MY", "Ringgit", "Sen"],
+  ["THB", "Thai Baht", "฿", "th-TH", "Baht", "Satang"],
+  ["PHP", "Philippine Peso", "₱", "en-PH", "Pesos", "Centavos"],
+  ["VND", "Vietnamese Dong", "₫", "vi-VN", "Dong", "Hao"],
+  ["BDT", "Bangladeshi Taka", "৳", "bn-BD", "Taka", "Poisha"],
+  ["PKR", "Pakistani Rupee", "Rs", "en-PK", "Rupees", "Paise"],
+  ["LKR", "Sri Lankan Rupee", "Rs", "en-LK", "Rupees", "Cents"],
+  ["NPR", "Nepalese Rupee", "Rs", "en-NP", "Rupees", "Paise"],
+  ["SAR", "Saudi Riyal", "SAR", "ar-SA", "Riyals", "Halalas"],
+  ["QAR", "Qatari Riyal", "QAR", "ar-QA", "Riyals", "Dirhams"],
+  ["KWD", "Kuwaiti Dinar", "KWD", "ar-KW", "Dinars", "Fils"],
+  ["EGP", "Egyptian Pound", "E£", "ar-EG", "Pounds", "Piastres"],
+  ["NGN", "Nigerian Naira", "₦", "en-NG", "Naira", "Kobo"],
+  ["KES", "Kenyan Shilling", "KSh", "en-KE", "Shillings", "Cents"],
+  ["GHS", "Ghanaian Cedi", "GH₵", "en-GH", "Cedis", "Pesewas"],
+  ["ILS", "Israeli Shekel", "₪", "he-IL", "Shekels", "Agorot"],
+].map(([code, name, symbol, locale, major, minor]) => ({ code, name, symbol, locale, words: { major, minor } }));
+const curCatalog = (code) => CURRENCY_CATALOG.find((c) => c.code === String(code || "").toUpperCase()) || null;
+
+// Live FX rates from open.er-api.com (free, keyless). Returns units of each
+// currency per 1 `base`; the app stores rate = value of 1 unit in base, i.e.
+// 1 / rates[code].
+const fetchLiveRates = async (base) => {
+  const res = await fetch("https://open.er-api.com/v6/latest/" + encodeURIComponent(String(base || "USD").toUpperCase()));
+  if (!res.ok) throw new Error("Rate service unavailable");
+  const j = await res.json();
+  if (!j || j.result !== "success" || !j.rates) throw new Error("Rate service unavailable");
+  return j.rates;
+};
+
 function useCountUp(target, duration = 1000) {
   const [val, setVal] = useState(0);
   const fromRef = useRef(0);
@@ -1447,6 +1534,20 @@ function CurrencySelect({ value, onChange }) {
   );
 }
 
+// Dropdown over the currency catalog. A value not in the catalog (old configs,
+// exotic codes) is kept as a selectable option so nothing silently changes.
+function CurrencyPicker({ value, onChange, style }) {
+  const v = String(value || "USD").toUpperCase();
+  const known = CURRENCY_CATALOG.some((c) => c.code === v);
+  return (
+    <select value={v} onChange={(e) => onChange(e.target.value)}
+      style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)", ...style }}>
+      {!known && <option value={v}>{v}</option>}
+      {CURRENCY_CATALOG.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name} ({c.symbol})</option>)}
+    </select>
+  );
+}
+
 function TierEditor({ tiers, onChange, symbol }) {
   const rows = (tiers && tiers.length) ? tiers : [{ upTo: null, rate: 0.1 }];
   const set = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -1466,12 +1567,12 @@ function TierEditor({ tiers, onChange, symbol }) {
             ? <span style={{ flex: 1, color: C.textDim }}>—</span>
             : <div style={{ position: "relative", flex: 1 }}>
                 <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 11 }}>{symbol}</span>
-                <input type="number" value={r.upTo} onChange={(e) => set(i, { upTo: Number(e.target.value) || 0 })}
+                <NumInput value={r.upTo} onChange={(v) => set(i, { upTo: Number(v) || 0 })}
                   style={{ ...inpStyle, padding: "7px 8px 7px 18px", fontSize: 12 }} />
               </div>}
           <span style={{ color: C.textMuted }}>→</span>
           <div style={{ position: "relative", width: 78 }}>
-            <input type="number" step="0.1" value={+((r.rate || 0) * 100).toFixed(4)} onChange={(e) => set(i, { rate: (Number(e.target.value) || 0) / 100 })}
+            <NumInput value={+((r.rate || 0) * 100).toFixed(4)} onChange={(v) => set(i, { rate: (Number(v) || 0) / 100 })}
               style={{ ...inpStyle, padding: "7px 18px 7px 8px", fontSize: 12 }} />
             <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 11 }}>%</span>
           </div>
@@ -1502,21 +1603,21 @@ function CommissionEditor({ value, onChange, symbol = "$" }) {
       </select>
       {v.model === "percent" && (
         <div style={inline}>
-          <input type="number" step="0.1" style={inpStyle} value={+((v.rate || 0) * 100).toFixed(4)} onChange={(e) => onChange({ model: "percent", rate: (Number(e.target.value) || 0) / 100 })} />
+          <NumInput style={inpStyle} value={+((v.rate || 0) * 100).toFixed(4)} onChange={(nv) => onChange({ model: "percent", rate: (Number(nv) || 0) / 100 })} />
           <span style={{ color: C.textDim, fontSize: 13 }}>%</span>
         </div>
       )}
       {v.model === "flat" && (
         <div style={inline}>
           <span style={{ color: C.textDim, fontSize: 13 }}>{symbol}</span>
-          <input type="number" step="1" style={inpStyle} value={v.amount || 0} onChange={(e) => onChange({ model: "flat", amount: Number(e.target.value) || 0 })} />
+          <NumInput style={inpStyle} value={v.amount || 0} onChange={(nv) => onChange({ model: "flat", amount: Number(nv) || 0 })} />
           <span style={{ color: C.textMuted, fontSize: 12, whiteSpace: "nowrap" }}>per item</span>
         </div>
       )}
       {v.model === "hourly" && (
         <div style={inline}>
           <span style={{ color: C.textDim, fontSize: 13 }}>{symbol}</span>
-          <input type="number" step="1" style={inpStyle} value={v.rate || 0} onChange={(e) => onChange({ model: "hourly", rate: Number(e.target.value) || 0 })} />
+          <NumInput style={inpStyle} value={v.rate || 0} onChange={(nv) => onChange({ model: "hourly", rate: Number(nv) || 0 })} />
           <span style={{ color: C.textMuted, fontSize: 12, whiteSpace: "nowrap" }}>per hour</span>
         </div>
       )}
@@ -1573,6 +1674,51 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
   const setTerm = (grp, sub, v) => setD((s) => ({ ...s, terms: { ...s.terms, [grp]: { ...s.terms[grp], [sub]: v } } }));
   const setTermFlat = (k, v) => setD((s) => ({ ...s, terms: { ...s.terms, [k]: v } }));
 
+  // Live FX: refresh every added currency's rate against the base. fxSeq drops
+  // responses that arrive after a newer request (e.g. base changed mid-fetch).
+  const [fxStatus, setFxStatus] = useState("");
+  const fxSeq = useRef(0);
+  const refreshRates = async (baseOverride) => {
+    const seq = ++fxSeq.current;
+    const base = String(baseOverride || d.locale.currency || "USD").toUpperCase();
+    setFxStatus("loading");
+    try {
+      const rates = await fetchLiveRates(base);
+      if (seq !== fxSeq.current) return;
+      setD((s) => ({
+        ...s,
+        currencies: (s.currencies || []).map((c) => {
+          const r = c.code && rates[String(c.code).toUpperCase()];
+          return r ? { ...c, rate: +(1 / r).toFixed(6) } : c;
+        }),
+      }));
+      setFxStatus("ok");
+    } catch {
+      if (seq === fxSeq.current) setFxStatus("error");
+    }
+  };
+  const pickBaseCurrency = (code) => {
+    const cat = curCatalog(code);
+    setD((s) => ({
+      ...s,
+      locale: {
+        ...s.locale, currency: code,
+        ...(cat ? { currencySymbol: cat.symbol, locale: cat.locale, currencyWords: cat.words } : {}),
+      },
+    }));
+    if ((d.currencies || []).length) refreshRates(code);
+  };
+  const pickRowCurrency = (i, code) => {
+    const cat = curCatalog(code);
+    setD((s) => ({
+      ...s,
+      currencies: s.currencies.map((x, idx) => idx === i
+        ? { ...x, code, symbol: cat ? cat.symbol : (x.symbol || code), locale: cat ? cat.locale : x.locale, words: cat ? cat.words : x.words }
+        : x),
+    }));
+    refreshRates();
+  };
+
   const [logoErr, setLogoErr] = useState("");
   const onLogoFile = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -1596,11 +1742,19 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
     out.locale.taxRate = Number(d.locale.taxRate) || 0;
     const baseC = (out.locale.currency || "USD").toUpperCase();
     out.currencies = (d.currencies || [])
-      .map((c) => ({ code: String(c.code || "").toUpperCase().trim(), symbol: c.symbol || "", rate: Number(c.rate) || 0 }))
+      .map((c) => {
+        const cat = curCatalog(c.code);
+        const row = { code: String(c.code || "").toUpperCase().trim(), symbol: c.symbol || (cat ? cat.symbol : ""), rate: Number(c.rate) || 0 };
+        const lc = c.locale || (cat && cat.locale);
+        const w = c.words || (cat && cat.words);
+        if (lc) row.locale = lc;
+        if (w) row.words = w;
+        return row;
+      })
       .filter((c) => c.code && c.code !== baseC && c.rate > 0)
       .filter((c, i, arr) => arr.findIndex((x) => x.code === c.code) === i);
-    out.invoice.fiscalYearStartMonth = Number(d.invoice.fiscalYearStartMonth) || 1;
-    out.invoice.dueDays = Number(d.invoice.dueDays) || 0;
+    out.invoice.fiscalYearStartMonth = Math.min(12, Math.max(1, Number(d.invoice.fiscalYearStartMonth) || 1));
+    out.invoice.dueDays = Math.max(0, Number(d.invoice.dueDays) || 0);
     onSave(out);
   };
 
@@ -1670,13 +1824,13 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
 
         <SettingsSection title="Currency & Tax">
           <SettingsRow>
-            <div style={half}><Field label="Currency code"><input style={inpStyle} value={d.locale.currency} onChange={(e) => setL("currency", e.target.value.toUpperCase())} placeholder="USD" /></Field></div>
+            <div style={half}><Field label="Currency"><CurrencyPicker value={d.locale.currency} onChange={pickBaseCurrency} /></Field></div>
             <div style={half}><Field label="Symbol"><input style={inpStyle} value={d.locale.currencySymbol} onChange={(e) => setL("currencySymbol", e.target.value)} placeholder="$" /></Field></div>
             <div style={half}><Field label="Locale"><input style={inpStyle} value={d.locale.locale} onChange={(e) => setL("locale", e.target.value)} placeholder="en-US" /></Field></div>
           </SettingsRow>
           <SettingsRow>
             <div style={half}><Field label="Tax label"><input style={inpStyle} value={d.locale.taxLabel} onChange={(e) => setL("taxLabel", e.target.value)} placeholder="VAT / GST" /></Field></div>
-            <div style={half}><Field label="Tax rate (%)"><input type="number" step="0.1" style={inpStyle} value={(Number(d.locale.taxRate) || 0) * 100} onChange={(e) => setL("taxRate", (Number(e.target.value) || 0) / 100)} /></Field></div>
+            <div style={half}><Field label="Tax rate (%)"><NumInput style={inpStyle} value={+((Number(d.locale.taxRate) || 0) * 100).toFixed(4)} onChange={(v) => setL("taxRate", (Number(v) || 0) / 100)} /></Field></div>
           </SettingsRow>
           <Field label="Tax line on invoice (optional)"><input style={inpStyle} value={d.locale.taxLine} onChange={(e) => setL("taxLine", e.target.value)} /></Field>
           <label style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: C.textDim, cursor: "pointer", marginTop: 8 }}>
@@ -1687,7 +1841,7 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
 
         <SettingsSection title="Currencies">
           <p style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.5 }}>
-            Base currency is <strong>{(d.locale.currency || "USD").toUpperCase()}</strong>. Add other currencies your {(d.terms?.client?.many || "clients").toLowerCase()} invoice in — <em>rate</em> is the value of 1 unit in {(d.locale.currency || "USD").toUpperCase()} (e.g. 1 EUR = 1.08 USD → rate 1.08). Dashboard totals convert to base at these rates.
+            Base currency is <strong>{(d.locale.currency || "USD").toUpperCase()}</strong>. Add other currencies your {(d.terms?.client?.many || "clients").toLowerCase()} invoice in — the <em>rate</em> (value of 1 unit in {(d.locale.currency || "USD").toUpperCase()}) is fetched live when you pick a currency, and you can still edit it. Dashboard totals convert to base at these rates.
           </p>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, fontSize: 12, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
             <span style={{ width: 78, fontWeight: 700, color: C.accent }}>{(d.locale.currency || "USD").toUpperCase()}</span>
@@ -1696,32 +1850,47 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
           </div>
           {(d.currencies || []).map((c, i) => (
             <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-              <input placeholder="EUR" value={c.code || ""} onChange={(e) => setD((s) => ({ ...s, currencies: s.currencies.map((x, idx) => idx === i ? { ...x, code: e.target.value.toUpperCase() } : x) }))}
-                style={{ ...inpStyle, width: 78, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }} />
+              <select value={c.code || ""} onChange={(e) => pickRowCurrency(i, e.target.value)}
+                style={{ ...inpStyle, width: 150, cursor: "pointer", background: "var(--surface)", fontFamily: "'JetBrains Mono',monospace" }}>
+                <option value="">Pick…</option>
+                {c.code && !curCatalog(c.code) && <option value={c.code}>{c.code}</option>}
+                {CURRENCY_CATALOG.filter((cc) => cc.code !== (d.locale.currency || "USD").toUpperCase())
+                  .map((cc) => <option key={cc.code} value={cc.code}>{cc.code} ({cc.symbol})</option>)}
+              </select>
               <input placeholder="€" value={c.symbol || ""} onChange={(e) => setD((s) => ({ ...s, currencies: s.currencies.map((x, idx) => idx === i ? { ...x, symbol: e.target.value } : x) }))}
                 style={{ ...inpStyle, width: 52, textAlign: "center" }} />
               <div style={{ position: "relative", flex: 1 }}>
-                <input type="number" step="0.0001" placeholder="rate in base" value={c.rate ?? ""} onChange={(e) => setD((s) => ({ ...s, currencies: s.currencies.map((x, idx) => idx === i ? { ...x, rate: e.target.value } : x) }))}
+                <NumInput placeholder="rate in base" value={c.rate ?? ""} onChange={(v) => setD((s) => ({ ...s, currencies: s.currencies.map((x, idx) => idx === i ? { ...x, rate: v } : x) }))}
                   style={inpStyle} />
               </div>
               <button type="button" aria-label="Remove currency" onClick={() => setD((s) => ({ ...s, currencies: s.currencies.filter((_, idx) => idx !== i) }))}
                 style={{ background: "none", border: "none", color: "rgba(239,68,68,0.55)", cursor: "pointer", fontSize: 14, padding: 4 }}><Icon name="x" size={14} /></button>
             </div>
           ))}
-          <button type="button" onClick={() => setD((s) => ({ ...s, currencies: [...(s.currencies || []), { code: "", symbol: "", rate: 1 }] }))}
-            style={{ marginTop: 4, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", color: "var(--accent)", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>+ Add currency</button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setD((s) => ({ ...s, currencies: [...(s.currencies || []), { code: "", symbol: "", rate: "" }] }))}
+              style={{ background: "var(--accent-dim)", border: "1px solid var(--accent-border)", color: "var(--accent)", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>+ Add currency</button>
+            {(d.currencies || []).some((c) => c.code) && (
+              <button type="button" onClick={() => refreshRates()}
+                style={{ background: "none", border: "1px solid var(--field-border)", color: C.textDim, borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                {fxStatus === "loading" ? "Fetching rates…" : "Refresh live rates"}
+              </button>
+            )}
+            {fxStatus === "ok" && <span style={{ fontSize: 11.5, color: C.earn }}>Live rates applied</span>}
+            {fxStatus === "error" && <span style={{ fontSize: 11.5, color: "#ef4444" }}>Couldn't fetch rates — check your connection or enter rates manually</span>}
+          </div>
         </SettingsSection>
 
         <SettingsSection title="Invoice">
           <Field label="Invoice title"><input style={inpStyle} value={d.invoice.title} onChange={(e) => setInv("title", e.target.value)} /></Field>
           <SettingsRow>
             <div style={half}><Field label="Number format"><input style={{ ...inpStyle, fontFamily: "'JetBrains Mono',monospace" }} value={d.invoice.numberFormat} onChange={(e) => setInv("numberFormat", e.target.value)} /></Field></div>
-            <div style={half}><Field label="Fiscal year start month"><input type="number" min="1" max="12" style={inpStyle} value={d.invoice.fiscalYearStartMonth} onChange={(e) => setInv("fiscalYearStartMonth", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Fiscal year start month (1–12)"><NumInput integer style={inpStyle} value={d.invoice.fiscalYearStartMonth} onChange={(v) => setInv("fiscalYearStartMonth", v)} /></Field></div>
           </SettingsRow>
           <div style={{ fontSize: 11, color: C.textMuted, marginTop: -6, marginBottom: 12 }}>Tokens: {"{FY} {YYYY} {YY} {MM} {SEQ}"}</div>
           <SettingsRow>
             <div style={half}><Field label="Line-item label"><input style={inpStyle} value={d.invoice.lineItemLabel} onChange={(e) => setInv("lineItemLabel", e.target.value)} /></Field></div>
-            <div style={half}><Field label="Payment due (days)"><input type="number" min="0" style={inpStyle} value={d.invoice.dueDays} onChange={(e) => setInv("dueDays", e.target.value)} /></Field></div>
+            <div style={half}><Field label="Payment due (days)"><NumInput integer style={inpStyle} value={d.invoice.dueDays} onChange={(v) => setInv("dueDays", v)} /></Field></div>
           </SettingsRow>
           <Field label="Notes"><input style={inpStyle} value={d.invoice.notes} onChange={(e) => setInv("notes", e.target.value)} /></Field>
           <Field label="Signatory"><input style={inpStyle} value={d.invoice.signatory} onChange={(e) => setInv("signatory", e.target.value)} /></Field>
@@ -1767,7 +1936,9 @@ function Onboarding({ onComplete }) {
     base.business.logo = "";
     base.business.address = [];
     base.locale.currency = (currency.trim().toUpperCase()) || "USD";
-    base.locale.currencySymbol = symbol || "$";
+    const cat = curCatalog(base.locale.currency);
+    base.locale.currencySymbol = symbol || (cat ? cat.symbol : "$");
+    if (cat) { base.locale.locale = cat.locale; base.locale.currencyWords = cat.words; }
     base.branding.accent = "#111111";
     base.branding.accent2 = "#5C5C5C";
     base.branding.accent3 = "#2E2E2E";
@@ -1839,7 +2010,7 @@ function Onboarding({ onComplete }) {
             <p style={{ fontSize: 13.5, color: C.textDim, marginBottom: 22 }}>Just the basics to brand your workspace.</p>
             <Field label="Agency name"><input style={inpStyle} value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="e.g. Acme Studio" /></Field>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <div style={half}><Field label="Currency code"><input style={inpStyle} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} placeholder="USD" /></Field></div>
+              <div style={half}><Field label="Currency"><CurrencyPicker value={currency} onChange={(code) => { setCurrency(code); const cat = curCatalog(code); if (cat) setSymbol(cat.symbol); }} /></Field></div>
               <div style={half}><Field label="Symbol"><input style={inpStyle} value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="$" /></Field></div>
             </div>
           </div>
@@ -2340,7 +2511,7 @@ function ManagementApp({ data, persist, config, onSettings, onInvoice, onExport,
                   <div style={{ flex: "1 1 150px" }}>
                     <Field label="Brand revenue">
                       <input type="number" min="0" step="0.01" placeholder="0.00" value={brandRevenue}
-                        onChange={(e) => setBrandRevenue(e.target.value)} style={inpStyle} />
+                        onChange={(e) => setBrandRevenue(numClean(e.target.value))} style={inpStyle} />
                     </Field>
                   </div>
                 )}
@@ -2348,14 +2519,14 @@ function ManagementApp({ data, persist, config, onSettings, onInvoice, onExport,
                   <Field label={"Client payment" + (payModel ? " · " + payDesc(payModel) : " (received)")}>
                     <input type="number" min="0" step="0.01" placeholder="0.00"
                       value={payment !== "" ? payment : (computedPayment != null ? +computedPayment.toFixed(2) : "")}
-                      onChange={(e) => setPayment(e.target.value)} style={inpStyle} />
+                      onChange={(e) => setPayment(numClean(e.target.value))} style={inpStyle} />
                   </Field>
                 </div>
                 {usesHours && (
                   <div style={{ flex: "1 1 110px" }}>
                     <Field label="Hours">
                       <input type="number" min="0" step="0.5" placeholder="0" value={entryHours}
-                        onChange={(e) => setEntryHours(e.target.value)} style={inpStyle} />
+                        onChange={(e) => setEntryHours(numClean(e.target.value))} style={inpStyle} />
                     </Field>
                   </div>
                 )}
@@ -2375,7 +2546,7 @@ function ManagementApp({ data, persist, config, onSettings, onInvoice, onExport,
                       <div key={c.id} style={{ flex: "1 1 150px" }}>
                         <Field label={`${c.label} · ${costDesc(c.cost)}`}>
                           <input type="number" min="0" step="0.01" placeholder="0.00" value={val}
-                            onChange={(e) => setExp((s) => ({ ...s, [c.id]: e.target.value }))} style={inpStyle} />
+                            onChange={(e) => setExp((s) => ({ ...s, [c.id]: numClean(e.target.value) }))} style={inpStyle} />
                         </Field>
                       </div>
                     );
@@ -3733,7 +3904,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                                     aria-label={c.name + " sale amount " + (idx + 1)}
                                     enterKeyHint="next"
                                     inputMode="decimal"
-                                    onChange={(e) => setVal(c.id, idx, e.target.value)}
+                                    onChange={(e) => setVal(c.id, idx, numClean(e.target.value))}
                                     onKeyDown={(e) => handleKeyDown(e, c.id, idx)}
                                     style={{
                                       width: 96, boxSizing: "border-box", padding: "8px 10px",
@@ -3759,7 +3930,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                                   type="number" placeholder="hrs" inputMode="decimal"
                                   value={(bulkHours[c.id] || [])[0] || ""}
                                   aria-label={c.name + " hours"}
-                                  onChange={(e) => setBulkHours((s) => ({ ...s, [c.id]: [e.target.value] }))}
+                                  onChange={(e) => setBulkHours((s) => ({ ...s, [c.id]: [numClean(e.target.value)] }))}
                                   style={{
                                     width: 70, boxSizing: "border-box", padding: "8px 10px",
                                     background: "rgba(var(--ink-rgb),0.03)", border: "1px solid rgba(var(--ink-rgb),0.07)",
@@ -4200,7 +4371,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
             <div style={{ display: "flex", gap: 12 }}>
               <Field label="Amount">
                 <input type="number" step="0.01" min="0" value={editAmount}
-                  onChange={(e) => setEditAmount(e.target.value)}
+                  onChange={(e) => setEditAmount(numClean(e.target.value))}
                   aria-label="Sale amount" style={inpStyle} autoFocus />
               </Field>
               <Field label="Date">
@@ -4297,7 +4468,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                   <div style={{ position: "relative" }}>
                     <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 12 }}>{config.locale.currencySymbol}</span>
                     <input type="number" step="0.01" min="0" value={it.amount}
-                      onChange={(e) => setReviewAmount(it.id, e.target.value)}
+                      onChange={(e) => setReviewAmount(it.id, numClean(e.target.value))}
                       disabled={!it.included}
                       aria-label={it.name + " detected amount"}
                       style={{ width: 110, padding: "6px 8px 6px 18px", background: "rgba(var(--ink-rgb),0.04)",
