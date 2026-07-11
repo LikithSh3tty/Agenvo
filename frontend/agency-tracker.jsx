@@ -707,6 +707,7 @@ const ICON_PATHS = {
   check: <polyline points="20 6 9 17 4 12" />,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></>,
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  "chevron-left": <polyline points="15 18 9 12 15 6" />,
 };
 function Icon({ name, size = 18, stroke = 1.7, style }) {
   const path = ICON_PATHS[name];
@@ -1266,8 +1267,17 @@ const NAV_ICONS = {
 // sidebar where the active section is a thumb-tab poking through the right rule.
 // Mid: horizontal tab row. Mobile (≤640px): compact bar with hamburger + NavDrawer.
 function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
-  const { business, terms } = useConfig();
+  const { terms } = useConfig();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Desktop sidebar collapse — icon-only rail, remembered across sessions.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("agencyx-snav") === "collapsed"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("agencyx-snav", collapsed ? "collapsed" : "open"); } catch { /* ignore */ }
+    // The content column reads this var to clear the rail (see .app-main CSS).
+    document.documentElement.style.setProperty("--snav-w", collapsed ? "94px" : "250px");
+  }, [collapsed]);
   const tabs = tabsProp || [
     { key: "Dashboard", label: "Dashboard" },
     { key: "Add Sales", label: "Add " + terms.revenue.one },
@@ -1279,30 +1289,41 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   return (
     <>
       <div className="no-print side-nav glass" style={{
-        position: "fixed", top: 14, left: 14, width: 220, height: 48, zIndex: 120,
-        alignItems: "center", gap: 10, padding: "0 12px",
+        position: "fixed", top: 14, left: 14, width: collapsed ? 64 : 220, height: 48, zIndex: 120,
+        alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 8,
+        padding: collapsed ? 0 : "0 14px",
         background: "var(--header-bg)", border: "1px solid var(--card-border)",
         borderRadius: 14,
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10), 0 12px 30px rgba(0,0,0,0.14)",
       }}>
-        {business.logo ? (
-          <img src={business.logo} alt={business.name} style={{
-            width: 28, height: 28, borderRadius: 7, objectFit: "contain", flex: "none",
-          }} />
-        ) : (
+        {!collapsed && (
           <div style={{
-            width: 28, height: 28, borderRadius: 7, flex: "none", display: "grid", placeItems: "center",
-            background: "var(--pop)", color: "var(--pop-fg)",
-            fontWeight: 800, fontSize: 15, fontFamily: "'Space Grotesk',sans-serif",
-          }}>{(business.name || "?").charAt(0).toUpperCase()}</div>
+            fontSize: 17, fontWeight: 700, letterSpacing: -0.4, color: "var(--ink)",
+            fontFamily: "'Space Grotesk',sans-serif", whiteSpace: "nowrap",
+          }}>agencyx</div>
         )}
-        <div style={{
-          fontSize: 15, fontWeight: 700, letterSpacing: -0.3, fontFamily: "'Space Grotesk',sans-serif",
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}>{business.name}</div>
+        <span aria-hidden="true" style={{
+          width: collapsed ? 12 : 9, height: collapsed ? 12 : 9, flex: "none",
+          background: "var(--pop)", borderRadius: 3,
+          marginLeft: collapsed ? 0 : "auto",
+        }} />
       </div>
+      <button className="no-print side-nav" onClick={() => setCollapsed((c) => !c)}
+        aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+        title={collapsed ? "Expand menu" : "Collapse menu"}
+        style={{
+          position: "fixed", top: 25, left: collapsed ? 65 : 221, width: 26, height: 26, zIndex: 130,
+          alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%",
+          background: "var(--surface)", border: "1px solid var(--card-border)",
+          color: "var(--text-dim)", cursor: "pointer",
+          boxShadow: "0 6px 14px rgba(0,0,0,0.18)",
+        }}>
+        <Icon name="chevron-left" size={13} style={{
+          transform: collapsed ? "rotate(180deg)" : "none", transition: "transform .25s ease",
+        }} />
+      </button>
       <nav className="no-print side-nav glass" aria-label="Primary" style={{
-        position: "fixed", top: 74, left: 14, bottom: 14, width: 220, zIndex: 50,
+        position: "fixed", top: 74, left: 14, bottom: 14, width: collapsed ? 64 : 220, zIndex: 50,
         flexDirection: "column", gap: 4, padding: 12,
         background: "var(--header-bg)", border: "1px solid var(--card-border)",
         borderRadius: 14, overflow: "hidden",
@@ -1320,26 +1341,27 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
           const on = active === t.key;
           return (
             <button key={t.key} onClick={() => onChange(t.key)} aria-current={on ? "page" : undefined}
-              className={"snav-item" + (on ? " snav-active" : "")}
+              className={"snav-item" + (on ? " snav-active" : "")} title={collapsed ? t.label : undefined}
               style={{
                 display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-                position: "relative",
+                position: "relative", justifyContent: collapsed ? "center" : "flex-start",
                 background: on ? "var(--accent)" : "transparent",
-                border: "none", borderRadius: 9, padding: "11px 12px",
+                border: "none", borderRadius: 9, padding: collapsed ? "11px 0" : "11px 12px",
                 color: on ? "var(--accent-fg)" : "var(--text-dim)",
                 cursor: on ? "default" : "pointer", fontSize: 14, fontWeight: on ? 700 : 600,
                 boxShadow: on ? "0 6px 16px rgba(0,0,0,0.18)" : "none",
               }}>
-              <Icon name={NAV_ICONS[t.key] || "tag"} size={15} />{t.label}
+              <Icon name={NAV_ICONS[t.key] || "tag"} size={15} />{!collapsed && t.label}
             </button>
           );
         })}
         <div style={{ marginTop: "auto" }}>
-          <button onClick={onSettings} className="snav-item" style={{
+          <button onClick={onSettings} className="snav-item" title={collapsed ? "Settings" : undefined} style={{
             display: "flex", alignItems: "center", gap: 10, width: "100%", position: "relative",
+            justifyContent: collapsed ? "center" : "flex-start",
             background: "transparent", border: "none", borderRadius: 9,
-            padding: "11px 12px", color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
-          }}><Icon name="settings" size={15} />Settings</button>
+            padding: collapsed ? "11px 0" : "11px 12px", color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
+          }}><Icon name="settings" size={15} />{!collapsed && "Settings"}</button>
         </div>
       </nav>
       <div className="no-print desktop-nav" style={{
@@ -3745,12 +3767,16 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         .side-nav { display: none; }
         .snav-item { transition: background .18s ease, color .18s ease; }
         .snav-item:not(.snav-active):hover { background: rgba(var(--ink-rgb),0.06); color: var(--ink); }
+        .side-nav { transition: width .25s ease, left .25s ease; }
         @media (min-width: 900px) {
           .desktop-nav { display: none !important; }
           .side-nav { display: flex; }
-          .sidenav-hide { display: none !important; }
-          /* Clear the fixed 220px sidebar, but stay centered on wide screens. */
-          .app-main { margin-left: max(250px, calc(50vw - 510px)) !important; }
+          /* Clear the fixed sidebar rail (width set by the collapse toggle),
+             but stay centered on wide screens. */
+          .app-main, .app-head {
+            margin-left: max(var(--snav-w, 250px), calc(50vw - 510px)) !important;
+            transition: margin-left .25s ease;
+          }
         }
         @keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @media (max-width: 640px) {
@@ -3815,8 +3841,8 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         background: "var(--header-bg)",
         position: "sticky", top: 0, zIndex: 100,
       }}>
-        <div style={{ maxWidth: 1020, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div className="sidenav-hide" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="app-head" style={{ maxWidth: 1020, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {config.business.logo ? (
               <img src={config.business.logo} alt={config.business.name} style={{
                 width: 32, height: 32, borderRadius: 8,
@@ -3835,7 +3861,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
               <div className="mobile-hide" style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1 }}>{config.business.tagline}</div>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ThemeToggle dark={dark} onToggle={toggleTheme} />
             <AccountMenu />
           </div>
