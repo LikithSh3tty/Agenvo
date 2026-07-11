@@ -9,7 +9,7 @@ import { useAuth } from "./AuthContext.jsx";
 
 const LIGHT = {
   bg: "#E4EAE1", rule: "rgba(40,70,40,0.10)", ink: "#141414", card: "#FBFBF8",
-  field: "#FFFFFF", sub: "#5B6058", stamp: "#EDF973", onStamp: "#161900", err: "#B5331B",
+  field: "#FFFFFF", sub: "#5B6058", stamp: "#F35627", onStamp: "#FFFFFF", err: "#B5331B",
 };
 const DARK = {
   bg: "#101315", rule: "rgba(255,255,255,0.045)", ink: "#EDEDEA", card: "#1A1E20",

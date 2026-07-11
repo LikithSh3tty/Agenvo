@@ -1,20 +1,24 @@
 {
-    "headers": [
-        {
-            "source": "/(.*)",
-            "headers": [
-                { "key": "X-Frame-Options", "value": "DENY" },
-                { "key": "X-Content-Type-Options", "value": "nosniff" },
-                { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-                { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
-                { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; object-src 'none'; base-uri 'self'" }
-            ]
-        }
+    "version": 2,
+    "builds": [
+        { "src": "frontend/package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } },
+        { "src": "backend/api/*.js", "use": "@vercel/node" }
     ],
-    "rewrites": [
+    "routes": [
         {
-            "source": "/(.*)",
-            "destination": "/index.html"
-        }
+            "src": "/(.*)",
+            "headers": {
+                "X-Frame-Options": "DENY",
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "strict-origin-when-cross-origin",
+                "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+                "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; object-src 'none'; base-uri 'self'"
+            },
+            "continue": true
+        },
+        { "src": "/api/(.*)", "dest": "/backend/api/$1.js" },
+        { "handle": "filesystem" },
+        { "src": "/(.*)", "dest": "/frontend/$1", "check": true },
+        { "src": "/(.*)", "dest": "/frontend/index.html" }
     ]
 }

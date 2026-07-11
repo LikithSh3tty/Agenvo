@@ -462,11 +462,11 @@ const THEME = {
   accentGlow: "rgba(var(--accent-rgb),0.12)",
   accentDim: "rgba(var(--accent-rgb),0.10)",
   accentBorder: "rgba(var(--accent-rgb),0.22)",
-  // Identity "pop" color — chartreuse. Light mode uses a deepened olive-lime so
-  // pop-as-text stays readable on white; dark mode gets the full acid lime.
-  pop: "#7A8B00",
-  pop2: "#657400",
-  popRgb: "122, 139, 0",
+  // Identity "pop" color — the original brand orange in light mode; dark mode
+  // swaps to acid chartreuse (see DARK below) where orange would feel muddy.
+  pop: "#F35627",
+  pop2: "#D63E1A",
+  popRgb: "243, 86, 39",
   popFg: "#FFFFFF", // text/icons sitting on a solid pop surface
   textDim: "rgba(var(--ink-rgb),0.80)",
   textMuted: "rgba(var(--ink-rgb),0.66)",
@@ -1271,6 +1271,33 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   const activeLabel = (tabs.find((t) => t.key === active) || tabs[0]).label;
   return (
     <>
+      <nav className="no-print side-nav" aria-label="Primary" style={{
+        position: "fixed", top: 0, left: 0, bottom: 0, width: 220, zIndex: 50,
+        flexDirection: "column", gap: 4, padding: "86px 14px 18px",
+        background: "var(--bg)", borderRight: "1px solid var(--card-border)",
+        overflowY: "auto",
+      }}>
+        <div style={{
+          fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "var(--text-muted)",
+          fontFamily: "'JetBrains Mono',monospace", padding: "0 14px", marginBottom: 8,
+        }}>Menu</div>
+        {tabs.map((t) => (
+          <button key={t.key} onClick={() => onChange(t.key)} style={{
+            display: "block", textAlign: "left", width: "100%",
+            background: active === t.key ? "var(--pop-dim)" : "transparent",
+            border: "1px solid " + (active === t.key ? "var(--pop-border)" : "transparent"),
+            padding: "11px 14px", borderRadius: 8, color: active === t.key ? "var(--pop)" : "var(--text-dim)",
+            cursor: "pointer", fontSize: 14, fontWeight: 600, transition: "all 0.2s",
+          }}>{t.label}</button>
+        ))}
+        <div style={{ marginTop: "auto", borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
+          <button onClick={onSettings} style={{
+            display: "flex", alignItems: "center", gap: 8, width: "100%",
+            background: "transparent", border: "1px solid transparent", padding: "11px 14px",
+            borderRadius: 8, color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
+          }}><Icon name="settings" size={15} />Settings</button>
+        </div>
+      </nav>
       <div className="no-print desktop-nav" style={{
         display: "flex", gap: 10, marginBottom: 28, borderBottom: "1px solid var(--card-border)",
         paddingBottom: 12, overflowX: "auto", alignItems: "center",
@@ -3671,6 +3698,13 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         ::-webkit-scrollbar-thumb { background: rgba(var(--accent-rgb),0.1); border-radius: 3px; }
 
         .mobile-nav { display: none; }
+        .side-nav { display: none; }
+        @media (min-width: 900px) {
+          .desktop-nav { display: none !important; }
+          .side-nav { display: flex; }
+          /* Clear the fixed 220px sidebar, but stay centered on wide screens. */
+          .app-main { margin-left: max(240px, calc(50vw - 510px)) !important; }
+        }
         @keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @media (max-width: 640px) {
           .desktop-nav { display: none !important; }
@@ -3761,7 +3795,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         </div>
       </div>
 
-      <div className="no-print" style={{ maxWidth: 1020, margin: "0 auto", padding: "28px 20px 60px" }}>
+      <div className="no-print app-main" style={{ maxWidth: 1020, margin: "0 auto", padding: "28px 20px 60px" }}>
         {config.agencyType === "management" ? (
           <ManagementApp data={data} persist={persist} config={config} onSettings={() => setSettingsOpen(true)} onInvoice={(payload) => setInvoiceView(payload)} onExport={exportBackup} onImport={handleImportFile} />
         ) : (<>
