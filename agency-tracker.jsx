@@ -725,8 +725,9 @@ function ThemeToggle({ dark, onToggle }) {
   );
 }
 
-function StatCard({ label, amount, delta = null, pop = false }) {
+function StatCard({ label, amount, delta = null, pop = false, currency = null }) {
   const animated = useCountUp(typeof amount === "number" ? amount : 0);
+  const cfmt = (v) => (currency ? fmtIn(v, currency) : fmt(v));
   const up = typeof delta === "number" && delta >= 0;
   return (
     <div style={{
@@ -741,7 +742,7 @@ function StatCard({ label, amount, delta = null, pop = false }) {
         <div style={{
           fontSize: 27, fontWeight: 700, letterSpacing: -0.5, fontFamily: "'Space Grotesk',sans-serif",
           fontVariantNumeric: "tabular-nums", color: pop ? "var(--pop)" : "var(--ink)",
-        }}>{fmt(animated)}</div>
+        }}>{cfmt(animated)}</div>
         {typeof delta === "number" && (
           <span className="delta-pill" style={{
             background: up ? "rgba(22,163,74,0.12)" : "rgba(255,107,107,0.12)",
@@ -766,12 +767,15 @@ function BrutalCheck({ checked, onChange, size = 17, ariaLabel }) {
   );
 }
 
-function RevenueTrend({ records, delay = 0, profitOf = null }) {
+function RevenueTrend({ records, delay = 0, profitOf = null, currency = null }) {
   const { terms } = useConfig();
   const [gran, setGran] = useState("daily");
   const [metric, setMetric] = useState("revenue");
   const [hover, setHover] = useState(null);
   const isProfit = metric === "profit" && !!profitOf;
+  // Values aggregate in base currency; `currency` re-denominates for display.
+  const dispRate = currency ? (curInfo(currency).rate || 1) : 1;
+  const cfmt = (v) => (currency ? fmtIn(v, currency) : fmt(v));
 
   const series = useMemo(() => {
     const bucket = {};
@@ -785,8 +789,8 @@ function RevenueTrend({ records, delay = 0, profitOf = null }) {
     });
     const keys = Object.keys(bucket).sort();
     const sliced = gran === "yearly" ? keys.slice(-10) : gran === "weekly" ? keys.slice(-26) : keys.slice(-30);
-    return sliced.map((k) => ({ key: k, value: bucket[k].value, label: bucket[k].label }));
-  }, [records, gran, isProfit]);
+    return sliced.map((k) => ({ key: k, value: money(bucket[k].value / dispRate), label: bucket[k].label }));
+  }, [records, gran, isProfit, dispRate]);
 
   const lineRef = useRef(null);
   const W = 1000, H = 170, pad = 14;
@@ -863,7 +867,7 @@ function RevenueTrend({ records, delay = 0, profitOf = null }) {
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.2, fontFamily: "'Space Grotesk',sans-serif" }}>{isProfit ? "Profit trend" : "Revenue trend"}</div>
           {geom && (
-            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.05, marginTop: 6, fontFamily: "'Space Grotesk',sans-serif", fontVariantNumeric: "tabular-nums", color: isProfit ? "#22C55E" : "var(--ink)" }}>{fmt(geom.total)}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.05, marginTop: 6, fontFamily: "'Space Grotesk',sans-serif", fontVariantNumeric: "tabular-nums", color: isProfit ? "#22C55E" : "var(--ink)" }}>{cfmt(geom.total)}</div>
           )}
           <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: geom ? 5 : 4 }}>
             {series.length === 0 ? `No ${terms.revenue.many.toLowerCase()} recorded yet` : `Across ${series.length} active ${series.length === 1 ? unitLabel : unitLabel + "s"}`}
@@ -923,7 +927,7 @@ function RevenueTrend({ records, delay = 0, profitOf = null }) {
               pointerEvents: "none", whiteSpace: "nowrap", zIndex: 2,
               boxShadow: "0 8px 24px rgba(var(--ink-rgb),0.28)",
             }}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(hover.value)}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{cfmt(hover.value)}</div>
               <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 1 }}>{hover.label}</div>
             </div>
           )}
@@ -938,8 +942,9 @@ function RevenueTrend({ records, delay = 0, profitOf = null }) {
 }
 
 const ROLE_SEG_COLORS = ["#2563EB", "#0D9488", "#7C3AED", "#CA8A04", "#DB2777", "#0891B2"];
-function SplitRing({ total, agency, chatter, extras = [], chatterLabel = "Chatters", segments = null, subtitle = null, delay = 0 }) {
+function SplitRing({ total, agency, chatter, extras = [], chatterLabel = "Chatters", segments = null, subtitle = null, delay = 0, currency = null }) {
   const r = 52, circ = 2 * Math.PI * r;
+  const cfmt = (v) => (currency ? fmtIn(v, currency) : fmt(v));
   let segs;
   if (segments) {
     segs = segments.filter(Boolean).map((s, i) => ({ key: s.key || ("seg-" + i), label: s.label, val: Math.max(0, s.val || 0), color: s.color }));
@@ -973,7 +978,7 @@ function SplitRing({ total, agency, chatter, extras = [], chatterLabel = "Chatte
       boxShadow: "0 18px 44px rgba(var(--ink-rgb),0.08), inset 0 1px 0 rgba(var(--ink-rgb),0.05)",
     }}>
       <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.2, fontFamily: "'Space Grotesk',sans-serif", marginBottom: 2 }}>Where the money goes</div>
-      <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>{subtitle || `Split of ${fmt(total)} gross`}</div>
+      <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>{subtitle || `Split of ${cfmt(total)} gross`}</div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 26, flexWrap: "wrap", flex: 1 }}>
         <svg width="128" height="128" viewBox="0 0 128 128" style={{ flex: "none" }} aria-label="Revenue split donut">
           <circle cx="64" cy="64" r={r} fill="none" stroke="rgba(var(--ink-rgb),0.06)" strokeWidth="15" />
@@ -991,7 +996,7 @@ function SplitRing({ total, agency, chatter, extras = [], chatterLabel = "Chatte
               <span style={{ width: 9, height: 9, borderRadius: 3, background: a.color, flex: "none" }} />
               <span style={{ color: C.textDim, flex: 1 }}>{a.label}</span>
               <span style={{ fontFamily: "'JetBrains Mono',monospace", color: C.textMuted, fontSize: 12, marginRight: 8 }}>{pct(a.val)}%</span>
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: "var(--ink)" }}>{fmt(a.val)}</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: "var(--ink)" }}>{cfmt(a.val)}</span>
             </div>
           ))}
         </div>
@@ -1000,11 +1005,14 @@ function SplitRing({ total, agency, chatter, extras = [], chatterLabel = "Chatte
   );
 }
 
-function ActivityHeatmap({ records, weeks = 18, delay = 0 }) {
+function ActivityHeatmap({ records, weeks = 18, delay = 0, currency = null }) {
   const { terms } = useConfig();
+  // Values aggregate in base currency; `currency` re-denominates for display.
+  const dispRate = currency ? (curInfo(currency).rate || 1) : 1;
+  const cfmt = (v) => (currency ? fmtIn(v, currency) : fmt(v));
   const { cols, max, activeDays, total, monthMarks } = useMemo(() => {
     const byDate = {};
-    records.forEach((r) => { byDate[r.date] = (byDate[r.date] || 0) + toBase(r.amount, r.currency); });
+    records.forEach((r) => { byDate[r.date] = (byDate[r.date] || 0) + toBase(r.amount, r.currency) / dispRate; });
     const end = new Date(); end.setHours(0, 0, 0, 0);
     const lastSat = new Date(end); lastSat.setDate(end.getDate() + (6 - end.getDay()));
     const totalDays = weeks * 7;
@@ -1031,7 +1039,7 @@ function ActivityHeatmap({ records, weeks = 18, delay = 0 }) {
       }
     }
     return { cols, max, activeDays: active, total, monthMarks };
-  }, [records, weeks]);
+  }, [records, weeks, dispRate]);
 
   const levels = [0, 0.22, 0.42, 0.66, 1];
   const level = (v) => (v <= 0 ? 0 : (() => { const r = v / (max || 1); return r > 0.66 ? 4 : r > 0.33 ? 3 : r > 0.12 ? 2 : 1; })());
@@ -1050,7 +1058,7 @@ function ActivityHeatmap({ records, weeks = 18, delay = 0 }) {
             {activeDays === 0 ? `No ${terms.revenue.many.toLowerCase()} in the last ${weeks} weeks` : `${activeDays} active ${activeDays === 1 ? "day" : "days"} · last ${weeks} weeks`}
           </div>
         </div>
-        {total > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>{fmt(total)}</div>}
+        {total > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>{cfmt(total)}</div>}
       </div>
 
       <div className="mobile-scroll-x" style={{ overflowX: "auto", paddingBottom: 4 }}>
@@ -1073,7 +1081,7 @@ function ActivityHeatmap({ records, weeks = 18, delay = 0 }) {
                   return (
                     <div
                       key={ri}
-                      title={cell.future ? "" : `${cell.d.toLocaleDateString("en-GB")} · ${cell.value > 0 ? fmt(cell.value) : "no " + terms.revenue.many.toLowerCase()}`}
+                      title={cell.future ? "" : `${cell.d.toLocaleDateString("en-GB")} · ${cell.value > 0 ? cfmt(cell.value) : "no " + terms.revenue.many.toLowerCase()}`}
                       style={{
                         width: CELL, height: CELL, borderRadius: 3,
                         background: cell.future ? "transparent" : cellColor(lv),
@@ -1897,7 +1905,7 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
 
         <SettingsSection title="Currencies">
           <p style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.5 }}>
-            Base currency is <strong>{(d.locale.currency || "USD").toUpperCase()}</strong>. Add other currencies your {(d.terms?.client?.many || "clients").toLowerCase()} invoice in — the <em>rate</em> (value of 1 unit in {(d.locale.currency || "USD").toUpperCase()}) is fetched live when you pick a currency, and you can still edit it. Dashboard totals convert to base at these rates.
+            Base currency is <strong>{(d.locale.currency || "USD").toUpperCase()}</strong>. Add other currencies your {(d.terms?.client?.many || "clients").toLowerCase()} invoice in — the <em>rate</em> (value of 1 unit in {(d.locale.currency || "USD").toUpperCase()}) is fetched live when you pick a currency and refreshed automatically every time the app loads, so conversions track the market. You can still edit a rate by hand.
           </p>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, fontSize: 12, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
             <span style={{ width: 78, fontWeight: 700, color: C.accent }}>{(d.locale.currency || "USD").toUpperCase()}</span>
@@ -1919,8 +1927,8 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
                 <NumInput placeholder="rate in base" value={c.rate ?? ""} onChange={(v) => setD((s) => ({ ...s, currencies: s.currencies.map((x, idx) => idx === i ? { ...x, rate: v } : x) }))}
                   style={inpStyle} />
               </div>
-              <button type="button" aria-label="Remove currency" onClick={() => setD((s) => ({ ...s, currencies: s.currencies.filter((_, idx) => idx !== i) }))}
-                style={{ background: "none", border: "none", color: "rgba(239,68,68,0.55)", cursor: "pointer", fontSize: 14, padding: 4 }}><Icon name="x" size={14} /></button>
+              <button type="button" aria-label="Remove currency" title="Remove currency" onClick={() => setD((s) => ({ ...s, currencies: s.currencies.filter((_, idx) => idx !== i) }))}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)", color: "#ef4444", borderRadius: 8, width: 34, height: 34, cursor: "pointer" }}><Icon name="x" size={14} /></button>
             </div>
           ))}
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
@@ -2943,6 +2951,27 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
 
   const persist = (d) => { setData(d); saveData(d); };
 
+  // Keep saved FX rates tracking the market: once per app load, re-fetch the
+  // live rate for every added currency and persist the refreshed values.
+  const fxRefreshed = useRef(false);
+  useEffect(() => {
+    if (loading || fxRefreshed.current) return;
+    if (!((data.config && data.config.currencies) || []).some((c) => c.code)) return;
+    fxRefreshed.current = true;
+    fetchLiveRates((data.config.locale && data.config.locale.currency) || "USD")
+      .then((rates) => setData((s) => {
+        const cur = ((s.config && s.config.currencies) || []).map((c) => {
+          const r = c.code && rates[String(c.code).toUpperCase()];
+          return r ? { ...c, rate: +(1 / r).toFixed(6) } : c;
+        });
+        if (JSON.stringify(cur) === JSON.stringify(s.config.currencies)) return s;
+        const next = { ...s, config: { ...s.config, currencies: cur } };
+        saveData(next);
+        return next;
+      }))
+      .catch(() => {}); // offline → keep the saved rates
+  }, [loading, data.config]);
+
   // Theme: remembers the user's choice; defaults to the OS preference on first load.
   const [dark, setDark] = useState(false);
   useEffect(() => {
@@ -3337,6 +3366,14 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   // Only primary-role members get amount inputs in the grid; extra-role people are credited per batch.
   const salesChatters = data.chatters.filter((c) => (salesClientId === "all" || c.clientId === salesClientId) && !c.roleId);
   const dashRecs = data.records.filter((r) => dashFilterDate === "all" || r.date === dashFilterDate);
+  // Dashboard display currency: totals & charts are re-denominated into this
+  // (defaults to base; remembered per device). Falls back to base if the saved
+  // pick is no longer an enabled currency.
+  const [dashCurRaw, setDashCurRaw] = useState(() => { try { return localStorage.getItem("agencyx_dash_currency") || ""; } catch { return ""; } });
+  const dispCode = currencyReg.map[dashCurRaw.toUpperCase()] ? dashCurRaw.toUpperCase() : baseCode();
+  const setDashCur = (c) => { setDashCurRaw(c); try { localStorage.setItem("agencyx_dash_currency", c); } catch {} };
+  const dispRate = curInfo(dispCode).rate || 1;
+  const inDisp = (v) => money(v / dispRate); // base → display currency
   const totalSales = sumMoney(dashRecs, (r) => toBase(r.amount, r.currency));
   const totalAgency = sumMoney(dashRecs, (r) => toBase(r.agencyCut, r.currency));
   const totalChatterPay = sumMoney(dashRecs, (r) => toBase(r.chatterCut, r.currency));
@@ -3423,8 +3460,8 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     salesDelta != null && { icon: salesDelta >= 0 ? "trending-up" : "trending-down", label: t.revenue.many + " vs last month", value: (salesDelta >= 0 ? "+" : "") + salesDelta + "%", tone: salesDelta >= 0 ? "good" : "bad" },
     topClient && topClient.total > 0 && { icon: "award", label: "Top " + t.client.one.toLowerCase(), value: topClient.name + " · " + fmtIn(topClient.total, topClient.currency), tone: "good" },
     topEarner && topEarner.total > 0 && { icon: "star", label: "Top " + t.staff.one.toLowerCase(), value: topEarner.name + " · " + fmtIn(topEarner.total, topEarner.currency) },
-    bestSalesDay && { icon: "flame", label: "Best day", value: shortDate(bestSalesDay[0]) + " · " + fmt(bestSalesDay[1]) },
-    dashRecs.length > 0 && { icon: "file-text", label: "Avg " + t.revenue.one.toLowerCase(), value: fmt(avgSale) },
+    bestSalesDay && { icon: "flame", label: "Best day", value: shortDate(bestSalesDay[0]) + " · " + fmtIn(inDisp(bestSalesDay[1]), dispCode) },
+    dashRecs.length > 0 && { icon: "file-text", label: "Avg " + t.revenue.one.toLowerCase(), value: fmtIn(inDisp(avgSale), dispCode) },
   ];
 
   const clientNameFn = (id) => data.clients.find((c) => c.id === id)?.name || "Unknown";
@@ -3695,7 +3732,19 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{ fontSize: 21, fontWeight: 700 }}>Analytics</h2>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {isMultiCurrency() && (
+                  <select
+                    value={dispCode} onChange={(e) => setDashCur(e.target.value)} aria-label="Dashboard display currency"
+                    style={{
+                      padding: "7px 12px", background: "var(--surface)", border: "1px solid rgba(var(--ink-rgb),0.06)",
+                      borderRadius: 8, color: "var(--ink)", fontSize: 13, fontFamily: "'JetBrains Mono',monospace", cursor: "pointer",
+                    }}>
+                    {Object.keys(currencyReg.map).map((c) => (
+                      <option key={c} value={c}>{c} ({currencyReg.map[c].symbol})</option>
+                    ))}
+                  </select>
+                )}
                 <span style={{ fontSize: 13, color: "var(--text-dim)" }}>Filter:</span>
                 <input
                   type="date"
@@ -3728,18 +3777,18 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
             </div>
 
             <div className="mobile-grid" style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
-              <StatCard label={`Total ${t.revenue.many}`} amount={totalSales} delta={salesDelta} />
-              <StatCard label={agencyCutLabel} amount={totalAgency} pop delta={agencyDelta} />
-              <StatCard label={chatterCutLabel} amount={totalChatterPay} delta={chatterDelta} />
+              <StatCard label={`Total ${t.revenue.many}`} amount={inDisp(totalSales)} delta={salesDelta} currency={dispCode} />
+              <StatCard label={agencyCutLabel} amount={inDisp(totalAgency)} pop delta={agencyDelta} currency={dispCode} />
+              <StatCard label={chatterCutLabel} amount={inDisp(totalChatterPay)} delta={chatterDelta} currency={dispCode} />
               {roleTotals.map((rt, i) => (
-                <StatCard key={rt.name} label={rt.name + " pay"} amount={rt.amount} accent="rgba(var(--pop-rgb),0.06)" delay={210 + i * 70} />
+                <StatCard key={rt.name} label={rt.name + " pay"} amount={inDisp(rt.amount)} currency={dispCode} accent="rgba(var(--pop-rgb),0.06)" delay={210 + i * 70} />
               ))}
             </div>
 
-            {isMultiCurrency() && usedCurrencies.length > 1 && (
+            {isMultiCurrency() && (usedCurrencies.length > 1 || dispCode !== baseCode()) && (
               <div style={{ marginTop: -16, marginBottom: 22, fontSize: 11.5, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <span>↔</span>
-                <span>Totals in {baseCode()}, converted from {usedCurrencies.join(", ")} at your configured rates.</span>
+                <span>Totals in {dispCode}, converted from {usedCurrencies.filter((c) => c !== dispCode).join(", ") || baseCode()} at live rates.</span>
               </div>
             )}
 
@@ -3747,14 +3796,14 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
 
             {totalSales > 0 ? (
               <div className="dash-bento">
-                <RevenueTrend records={data.records} delay={180} profitOf={(r) => toBase(r.agencyCut || 0, r.currency)} />
-                <SplitRing total={totalSales} agency={totalAgency} chatter={totalChatterPay} extras={roleTotals} chatterLabel={t.staffShareLabel} delay={220} />
+                <RevenueTrend records={data.records} delay={180} profitOf={(r) => toBase(r.agencyCut || 0, r.currency)} currency={dispCode} />
+                <SplitRing total={inDisp(totalSales)} agency={inDisp(totalAgency)} chatter={inDisp(totalChatterPay)} extras={roleTotals.map((rt) => ({ ...rt, amount: inDisp(rt.amount) }))} chatterLabel={t.staffShareLabel} delay={220} currency={dispCode} />
               </div>
             ) : (
-              <RevenueTrend records={data.records} delay={180} profitOf={(r) => toBase(r.agencyCut || 0, r.currency)} />
+              <RevenueTrend records={data.records} delay={180} profitOf={(r) => toBase(r.agencyCut || 0, r.currency)} currency={dispCode} />
             )}
 
-            <ActivityHeatmap records={data.records} delay={260} />
+            <ActivityHeatmap records={data.records} delay={260} currency={dispCode} />
 
             <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-dim)", marginBottom: 14, letterSpacing: 0.5 }}>By {t.client.one}</h3>
             {clientStats.length === 0 ? (
