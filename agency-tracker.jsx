@@ -4102,7 +4102,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                     background: C.accentDim, border: "1px solid " + C.accentBorder,
                     borderRadius: 13, padding: "16px 20px", marginBottom: 18,
                   }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
                       <div style={{ fontSize: 11, color: C.textDim, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.5, textTransform: "uppercase" }}>
                         Batch Summary — {shortDate(salesDate)}
                       </div>
@@ -4152,7 +4152,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         {/* ═══ CLIENTS ═══ */}
         {tab === "Clients" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22, flexWrap: "wrap", gap: 10 }}>
               <div>
                 <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 3 }}>{t.client.many} & {t.staff.many}</h2>
                 <p style={{ color: C.textDim, fontSize: 13 }}>Manage your clients and assign chatters.</p>
@@ -4168,15 +4168,15 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                   const ch = data.chatters.filter((c) => c.clientId === cl.id);
                   return (
                     <div key={cl.id} className="lift" style={{ background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 12, padding: "18px 20px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: ch.length ? 12 : 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: ch.length ? 12 : 0, flexWrap: "wrap", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                           <Avatar name={cl.name} size={40} color={clientColor(cl)} />
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 16 }}>{cl.name}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 16, overflowWrap: "anywhere" }}>{cl.name}</div>
                             <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{ch.length} {ch.length === 1 ? t.staff.one.toLowerCase() : t.staff.many.toLowerCase()}{clientRoles(cl).length ? " · " + clientRoles(cl).length + " extra " + (clientRoles(cl).length === 1 ? "role" : "roles") : ""}</div>
                           </div>
                         </div>
-                        <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button onClick={() => setEditingClient(cl)} style={{
                             background: "rgba(var(--ink-rgb),0.05)", border: "1px solid rgba(var(--ink-rgb),0.1)",
                             borderRadius: 8, color: C.textDim, padding: "7px 12px", cursor: "pointer",
