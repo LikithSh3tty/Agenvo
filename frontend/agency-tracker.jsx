@@ -1280,16 +1280,9 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
     <>
       <nav className="no-print side-nav" aria-label="Primary" style={{
         position: "fixed", top: 0, left: 0, bottom: 0, width: 220, zIndex: 50,
-        flexDirection: "column", gap: 3, padding: "84px 16px 18px",
-        background: "var(--bg)", borderRight: "2px solid var(--ink)",
+        flexDirection: "column", gap: 3, padding: "92px 16px 18px",
+        background: "var(--bg)",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", marginBottom: 12 }}>
-          <span style={{
-            fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase",
-            color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace",
-          }}>Index</span>
-          <span aria-hidden="true" style={{ flex: 1, height: 1, background: "var(--card-border)" }} />
-        </div>
         {tabs.map((t) => {
           const on = active === t.key;
           return (
@@ -1299,7 +1292,7 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
                 display: "flex", alignItems: "center", gap: 10, textAlign: "left",
                 background: "var(--pop)", color: "var(--pop-fg)",
                 border: "1.5px solid var(--ink)", borderRadius: 2,
-                padding: "11px 22px 11px 12px", marginRight: -27,
+                padding: "11px 12px",
                 fontSize: 14, fontWeight: 700, cursor: "default",
                 boxShadow: "3px 3px 0 var(--ink)",
               } : {
