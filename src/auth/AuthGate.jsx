@@ -4,8 +4,10 @@ import AuthScreen from "./AuthScreen.jsx";
 import { installUserStorage } from "./userStorage.js";
 
 // Gate the app behind authentication AND behind the user's cloud data being ready.
-// While the initial auth state resolves, or while a signed-in user's Firestore data
-// hydrates, we render a neutral background (the app's own loader takes over after).
+// Flow: neutral background while auth resolves → the app shell renders (guests get
+// a pristine, non-persistent workspace via guest storage) → if nobody is signed in,
+// the login card drops in as an overlay on top of the main page.
+// The `key` on the wrapper remounts the app on login/logout so it re-reads storage.
 export default function AuthGate({ children }) {
   const { user, loading } = useAuth();
   const [storageReady, setStorageReady] = useState(false);
@@ -24,7 +26,14 @@ export default function AuthGate({ children }) {
   }, [user?.uid]);
 
   if (loading) return <div style={{ minHeight: "100vh", background: "var(--bg, #FAFAFA)" }} />;
-  if (!user) return <AuthScreen />;
+  if (!user) {
+    return (
+      <>
+        <div key="guest">{children}</div>
+        <AuthScreen />
+      </>
+    );
+  }
   if (!storageReady) return <div style={{ minHeight: "100vh", background: "var(--bg, #FAFAFA)" }} />;
-  return children;
+  return <div key={user.uid}>{children}</div>;
 }

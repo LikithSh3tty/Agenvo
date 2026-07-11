@@ -3,17 +3,13 @@ import ReactDOM from "react-dom/client";
 import App from "../agency-tracker.jsx";
 import { AuthProvider } from "./auth/AuthContext.jsx";
 import AuthGate from "./auth/AuthGate.jsx";
+import { makeGuestStorage } from "./auth/userStorage.js";
 
-// Polyfill the window.storage API expected by the app.
+// The app talks to window.storage. Before login it's a guest store (pristine,
+// non-persistent, theme only); installUserStorage() swaps in the per-user
+// Firestore-backed store once someone signs in.
 if (!window.storage) {
-  window.storage = {
-    async get(key) {
-      return { value: localStorage.getItem(key) };
-    },
-    async set(key, value) {
-      localStorage.setItem(key, value);
-    },
-  };
+  window.storage = makeGuestStorage();
 }
 
 if (typeof document !== "undefined") {

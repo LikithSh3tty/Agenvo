@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from "react";
 import AccountMenu from "./src/auth/AccountMenu.jsx";
+import { useAuth } from "./src/auth/AuthContext.jsx";
 import DeleteAccountSection from "./src/auth/DeleteAccountSection.jsx";
 import ResetDataSection from "./src/auth/ResetDataSection.jsx";
 
@@ -152,15 +153,34 @@ const CURRENCY_CATALOG = [
 ].map(([code, name, symbol, locale, major, minor]) => ({ code, name, symbol, locale, words: { major, minor } }));
 const curCatalog = (code) => CURRENCY_CATALOG.find((c) => c.code === String(code || "").toUpperCase()) || null;
 
-// Live FX rates from open.er-api.com (free, keyless). Returns units of each
-// currency per 1 `base`; the app stores rate = value of 1 unit in base, i.e.
-// 1 / rates[code].
+// Live FX rates (free, keyless) with fallback providers — ad blockers and some
+// networks block individual rate hosts, so each source is tried in turn.
+// Returns units of each currency per 1 `base` keyed by UPPERCASE code; the app
+// stores rate = value of 1 unit in base, i.e. 1 / rates[code].
 const fetchLiveRates = async (base) => {
-  const res = await fetch("https://open.er-api.com/v6/latest/" + encodeURIComponent(String(base || "USD").toUpperCase()));
-  if (!res.ok) throw new Error("Rate service unavailable");
-  const j = await res.json();
-  if (!j || j.result !== "success" || !j.rates) throw new Error("Rate service unavailable");
-  return j.rates;
+  const b = String(base || "USD").toUpperCase();
+  const fromErApi = async () => {
+    const j = await (await fetch("https://open.er-api.com/v6/latest/" + encodeURIComponent(b))).json();
+    if (!j || j.result !== "success" || !j.rates) throw new Error("bad response");
+    return j.rates;
+  };
+  const fromCurrencyApi = (root) => async () => {
+    const j = await (await fetch(root + b.toLowerCase() + ".json")).json();
+    const m = j && j[b.toLowerCase()];
+    if (!m) throw new Error("bad response");
+    const rates = {};
+    Object.keys(m).forEach((k) => { if (typeof m[k] === "number") rates[k.toUpperCase()] = m[k]; });
+    return rates;
+  };
+  const sources = [
+    fromErApi,
+    fromCurrencyApi("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/"),
+    fromCurrencyApi("https://latest.currency-api.pages.dev/v1/currencies/"),
+  ];
+  for (const src of sources) {
+    try { return await src(); } catch { /* blocked or down — try the next host */ }
+  }
+  throw new Error("Rate service unavailable");
 };
 
 function useCountUp(target, duration = 1000) {
@@ -2860,7 +2880,9 @@ function App() {
   setActiveCurrency(config.locale);
   setCurrencyContext(config);
   const t = config.terms;
-  const needsOnboarding = !config.onboarded
+  // Guests see the pristine app shell behind the login overlay — never onboarding.
+  const { user: authedUser } = useAuth();
+  const needsOnboarding = !!authedUser && !config.onboarded
     && data.clients.length === 0 && data.chatters.length === 0 && data.records.length === 0;
 
   // Reflect the agency name in the browser tab.

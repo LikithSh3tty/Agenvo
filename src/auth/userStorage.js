@@ -103,14 +103,17 @@ export async function installUserStorage(uid) {
       clearTimeout(timers[key]);
       if (cache[key] != null && cache[key] !== lastWritten[key]) writeKey(key, cache[key]);
     }
-    window.storage = makeLocalStorage();
+    window.storage = makeGuestStorage();
   };
 }
 
-// Fallback used before login and after logout: plain localStorage, same interface.
-export function makeLocalStorage() {
+// Used before login and after logout, while the app shell renders behind the
+// login overlay: the workspace reads as pristine and nothing persists, so no
+// account's data can ever show or leak on a shared browser. Only the theme
+// preference (benign, shared by design) touches localStorage.
+export function makeGuestStorage() {
   return {
-    async get(key) { return { value: lsGet(key) }; },
-    async set(key, value) { lsSet(key, value); },
+    async get(key) { return { value: key === THEME_KEY ? lsGet(key) : null }; },
+    async set(key, value) { if (key === THEME_KEY) lsSet(key, value); },
   };
 }

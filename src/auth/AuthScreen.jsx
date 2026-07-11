@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./AuthContext.jsx";
 
-// ── "Ledger card" auth screen ────────────────────────────────────────────────
-// agencyx is an agency revenue & commission ledger, so the front door is an
-// accounting artifact: greenbar ledger paper, a hard-edged form block, and a
-// rubber-stamp CTA you punch into. Neubrutalist bones, grounded in the subject.
+// ── "Ledger card" auth overlay ───────────────────────────────────────────────
+// agencyx is an agency revenue & commission ledger, so the sign-in is an
+// accounting artifact: a hard-edged form block with a rubber-stamp CTA. It
+// renders as an overlay on top of the app shell — the main page paints first,
+// then the card drops in over a dimmed, blurred backdrop.
 
 const LIGHT = {
   bg: "#E4EAE1", rule: "rgba(40,70,40,0.10)", ink: "#141414", card: "#FBFBF8",
@@ -44,11 +45,11 @@ export default function AuthScreen() {
   const T = useTheme();
   const { signIn, signUp, signInWithGoogle, sendReset } = useAuth();
 
-  // Let the front door breathe: the ledger-paper page and wordmark render first,
-  // then the auth card drops in after a beat instead of confronting immediately.
+  // Let the main page paint first, then drop the card in after a short beat
+  // instead of confronting immediately.
   const [showCard, setShowCard] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setShowCard(true), 2000);
+    const t = setTimeout(() => setShowCard(true), 700);
     return () => clearTimeout(t);
   }, []);
 
@@ -107,12 +108,14 @@ export default function AuthScreen() {
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
     .lx { --bg:${T.bg}; --rule:${T.rule}; --ink:${T.ink}; --card:${T.card}; --field:${T.field};
       --sub:${T.sub}; --stamp:${T.stamp}; --on-stamp:${T.onStamp}; --err:${T.err};
-      min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
-      background-color:var(--bg);
-      background-image:repeating-linear-gradient(var(--rule) 0 1px, transparent 1px 30px);
+      position:fixed; inset:0; z-index:6000; display:flex; align-items:center; justify-content:center; padding:24px;
+      background:rgba(12,15,13,0.50);
+      backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px);
       color:var(--ink); font-family:'Plus Jakarta Sans',system-ui,sans-serif;
       -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+      animation:lxDim .35s ease both;
     }
+    @keyframes lxDim{ from{ opacity:0; } to{ opacity:1; } }
     .lx *{ box-sizing:border-box; }
     .lx-mono{ font-family:'JetBrains Mono',ui-monospace,monospace; }
     .lx-card{ width:100%; max-width:382px; background:var(--card); border:2px solid var(--ink);
@@ -188,30 +191,14 @@ export default function AuthScreen() {
     .lx-spin.dark{ border-color:rgba(20,20,20,.25); border-top-color:var(--ink); }
     @keyframes lxSpin{ to{ transform:rotate(360deg); } }
 
-    .lx-hero{ text-align:center; animation:lxFade .6s ease both; }
-    .lx-hero-word{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:44px; letter-spacing:-.03em;
-      display:flex; align-items:center; justify-content:center; gap:12px; }
-    .lx-hero-word i{ width:18px; height:18px; background:var(--stamp); border-radius:2px; }
-    .lx-hero-sub{ margin-top:12px; font-size:11px; letter-spacing:2.5px; color:var(--sub); }
-    @keyframes lxFade{ from{ opacity:0; } to{ opacity:1; } }
-
-    @media (prefers-reduced-motion: reduce){ .lx *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+    @media (prefers-reduced-motion: reduce){ .lx, .lx *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
   `, [T]);
 
-  if (!showCard) {
-    return (
-      <div className="lx">
-        <style>{css}</style>
-        <div className="lx-hero">
-          <div className="lx-hero-word">agencyx<i aria-hidden="true" /></div>
-          <div className="lx-hero-sub lx-mono">REVENUE · COMMISSIONS · INVOICES</div>
-        </div>
-      </div>
-    );
-  }
+  // Main page stays fully visible for a beat before the overlay fades in.
+  if (!showCard) return null;
 
   return (
-    <div className="lx">
+    <div className="lx" role="dialog" aria-modal="true" aria-label="Sign in to agencyx">
       <style>{css}</style>
       <div className="lx-card">
         <div className="lx-head">
