@@ -462,6 +462,12 @@ const THEME = {
   accentGlow: "rgba(var(--accent-rgb),0.12)",
   accentDim: "rgba(var(--accent-rgb),0.10)",
   accentBorder: "rgba(var(--accent-rgb),0.22)",
+  // Identity "pop" color — chartreuse. Light mode uses a deepened olive-lime so
+  // pop-as-text stays readable on white; dark mode gets the full acid lime.
+  pop: "#7A8B00",
+  pop2: "#657400",
+  popRgb: "122, 139, 0",
+  popFg: "#FFFFFF", // text/icons sitting on a solid pop surface
   textDim: "rgba(var(--ink-rgb),0.80)",
   textMuted: "rgba(var(--ink-rgb),0.66)",
   ink: "#15171a", // primary text color
@@ -492,6 +498,10 @@ const DARK = {
   accentGlow: "rgba(var(--accent-rgb),0.10)",
   accentDim: "rgba(var(--accent-rgb),0.08)",
   accentBorder: "rgba(var(--accent-rgb),0.20)",
+  pop: "#EDF973",
+  pop2: "#CBD94A",
+  popRgb: "237, 249, 115",
+  popFg: "#161900",
   textDim: "rgba(236,237,238,0.80)",
   textMuted: "rgba(236,237,238,0.55)",
   ink: "#ECEDEE",
@@ -650,7 +660,7 @@ function Btn({ children, onClick, disabled, variant, style: s }) {
   const base = isPrimary
     ? {
       background: disabled ? "rgba(var(--pop-rgb),0.35)" : "var(--pop)",
-      color: "#fff",
+      color: "var(--pop-fg)",
       border: "2px solid var(--ink)",
       boxShadow: disabled ? "none" : "3px 3px 0 var(--ink)",
     }
@@ -981,7 +991,7 @@ function SplitRing({ total, agency, chatter, extras = [], chatterLabel = "Chatte
     segs = [
       { key: "creator", label: "Creators kept", val: creator, color: "#D8D8DC" },
       ...extras.map((e, i) => ({ key: "role-" + i, label: e.name, val: e.amount || 0, color: ROLE_SEG_COLORS[i % ROLE_SEG_COLORS.length] })),
-      { key: "chatter", label: chatterLabel, val: chatter, color: "#F9A78C" },
+      { key: "chatter", label: chatterLabel, val: chatter, color: "#7A8FA6" },
       { key: "agency", label: "Agency (you)", val: agency, color: "var(--pop)" },
     ];
   }
@@ -1168,7 +1178,7 @@ function EmptyState({ icon, text, sub, action }) {
 }
 
 const CLIENT_COLORS = [
-  "#F35627", "#2563EB", "#16A34A", "#7C3AED", "#0891B2",
+  "#65A30D", "#2563EB", "#16A34A", "#7C3AED", "#0891B2",
   "#DB2777", "#CA8A04", "#475569", "#DC2626", "#0D9488",
 ];
 
@@ -1875,7 +1885,7 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
               {d.business.logo ? (
                 <img src={d.business.logo} alt="Logo preview" style={{ width: 46, height: 46, borderRadius: 8, objectFit: "contain", background: "rgba(var(--ink-rgb),0.04)", border: "1px solid var(--field-border)", flex: "none" }} />
               ) : (
-                <div style={{ width: 46, height: 46, borderRadius: 8, flex: "none", display: "grid", placeItems: "center", background: "var(--pop)", color: "#fff", fontWeight: 800, fontSize: 20, fontFamily: "'Space Grotesk',sans-serif" }}>{(d.business.name || "?").charAt(0).toUpperCase()}</div>
+                <div style={{ width: 46, height: 46, borderRadius: 8, flex: "none", display: "grid", placeItems: "center", background: "var(--pop)", color: "var(--pop-fg)", fontWeight: 800, fontSize: 20, fontFamily: "'Space Grotesk',sans-serif" }}>{(d.business.name || "?").charAt(0).toUpperCase()}</div>
               )}
               <label style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", color: "var(--accent)", borderRadius: 8, padding: "8px 13px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
                 <Icon name="upload" size={14} /> Upload logo
@@ -3572,11 +3582,12 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
           --accent-glow: rgba(var(--accent-rgb), 0.10);
           --accent-dim: rgba(var(--accent-rgb), 0.06);
           --accent-border: rgba(var(--accent-rgb), 0.14);
-          --pop: #F35627;
-          --pop2: #D63E1A;
-          --pop-rgb: 243, 86, 39;
-          --pop-dim: rgba(243, 86, 39, 0.10);
-          --pop-border: rgba(243, 86, 39, 0.32);
+          --pop: ${TH.pop};
+          --pop2: ${TH.pop2};
+          --pop-rgb: ${TH.popRgb};
+          --pop-fg: ${TH.popFg};
+          --pop-dim: rgba(var(--pop-rgb), 0.10);
+          --pop-border: rgba(var(--pop-rgb), 0.32);
           --ink: ${TH.ink};
           --ink-rgb: ${TH.inkRgb};
           --ink-soft: ${TH.inkSoft};
@@ -3734,7 +3745,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
             ) : (
               <div style={{
                 width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center",
-                background: "var(--pop)", color: "#fff",
+                background: "var(--pop)", color: "var(--pop-fg)",
                 fontWeight: 800, fontSize: 17, fontFamily: "'Space Grotesk',sans-serif",
               }}>{(config.business.name || "?").charAt(0).toUpperCase()}</div>
             )}

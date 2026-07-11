@@ -9,11 +9,11 @@ import { useAuth } from "./AuthContext.jsx";
 
 const LIGHT = {
   bg: "#E4EAE1", rule: "rgba(40,70,40,0.10)", ink: "#141414", card: "#FBFBF8",
-  field: "#FFFFFF", sub: "#5B6058", stamp: "#F35627", onStamp: "#FFFFFF", err: "#B5331B",
+  field: "#FFFFFF", sub: "#5B6058", stamp: "#EDF973", onStamp: "#161900", err: "#B5331B",
 };
 const DARK = {
   bg: "#101315", rule: "rgba(255,255,255,0.045)", ink: "#EDEDEA", card: "#1A1E20",
-  field: "#14181A", sub: "#9AA29A", stamp: "#F35627", onStamp: "#FFFFFF", err: "#F0815F",
+  field: "#14181A", sub: "#9AA29A", stamp: "#EDF973", onStamp: "#161900", err: "#F0815F",
 };
 
 const THEME_KEY = "agencyx-theme"; // shared with the app
@@ -187,9 +187,9 @@ export default function AuthScreen() {
     .lx-foot button{ appearance:none; border:0; background:none; cursor:pointer; padding:0; font:inherit;
       font-weight:700; color:var(--ink); text-decoration:underline; }
 
-    .lx-spin{ width:16px; height:16px; border:2.5px solid rgba(255,255,255,.4); border-top-color:#fff;
+    .lx-spin{ width:16px; height:16px; border:2.5px solid rgba(127,127,127,.35); border-top-color:currentColor;
       border-radius:50%; animation:lxSpin .7s linear infinite; }
-    .lx-spin.dark{ border-color:rgba(20,20,20,.25); border-top-color:var(--ink); }
+    .lx-spin.dark{ border-color:rgba(127,127,127,.25); border-top-color:var(--ink); }
     @keyframes lxSpin{ to{ transform:rotate(360deg); } }
 
     @media (prefers-reduced-motion: reduce){ .lx, .lx *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
