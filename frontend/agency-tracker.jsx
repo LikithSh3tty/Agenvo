@@ -1279,36 +1279,32 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   return (
     <>
       <nav className="no-print side-nav" aria-label="Primary" style={{
-        position: "fixed", top: 0, left: 0, bottom: 0, width: 220, zIndex: 50,
-        flexDirection: "column", gap: 3, padding: "92px 16px 18px",
-        background: "var(--bg)",
+        position: "fixed", top: 74, left: 14, bottom: 14, width: 220, zIndex: 50,
+        flexDirection: "column", gap: 4, padding: 12,
+        background: "var(--surface)", border: "1px solid var(--card-border)",
+        borderRadius: 14,
       }}>
         {tabs.map((t) => {
           const on = active === t.key;
           return (
             <button key={t.key} onClick={() => onChange(t.key)} aria-current={on ? "page" : undefined}
               className={"snav-item" + (on ? " snav-active" : "")}
-              style={on ? {
+              style={{
                 display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-                background: "var(--pop)", color: "var(--pop-fg)",
-                border: "1.5px solid var(--ink)", borderRadius: 2,
-                padding: "11px 12px",
-                fontSize: 14, fontWeight: 700, cursor: "default",
-                boxShadow: "3px 3px 0 var(--ink)",
-              } : {
-                display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-                background: "transparent", border: "1.5px solid transparent", borderRadius: 2,
-                padding: "11px 12px", color: "var(--text-dim)",
-                cursor: "pointer", fontSize: 14, fontWeight: 600,
+                background: on ? "var(--accent)" : "transparent",
+                border: "none", borderRadius: 9, padding: "11px 12px",
+                color: on ? "var(--accent-fg)" : "var(--text-dim)",
+                cursor: on ? "default" : "pointer", fontSize: 14, fontWeight: on ? 700 : 600,
+                boxShadow: on ? "0 6px 16px rgba(0,0,0,0.18)" : "none",
               }}>
               <Icon name={NAV_ICONS[t.key] || "tag"} size={15} />{t.label}
             </button>
           );
         })}
-        <div style={{ marginTop: "auto", borderTop: "1px solid var(--card-border)", paddingTop: 12 }}>
+        <div style={{ marginTop: "auto" }}>
           <button onClick={onSettings} className="snav-item" style={{
             display: "flex", alignItems: "center", gap: 10, width: "100%",
-            background: "transparent", border: "1.5px solid transparent", borderRadius: 2,
+            background: "transparent", border: "none", borderRadius: 9,
             padding: "11px 12px", color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
           }}><Icon name="settings" size={15} />Settings</button>
         </div>
@@ -3714,13 +3710,13 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
 
         .mobile-nav { display: none; }
         .side-nav { display: none; }
-        .snav-item { transition: background .18s ease, color .18s ease, transform .18s ease; }
-        .snav-item:not(.snav-active):hover { background: rgba(var(--ink-rgb),0.05); color: var(--ink); transform: translateX(3px); }
+        .snav-item { transition: background .18s ease, color .18s ease; }
+        .snav-item:not(.snav-active):hover { background: rgba(var(--ink-rgb),0.06); color: var(--ink); }
         @media (min-width: 900px) {
           .desktop-nav { display: none !important; }
           .side-nav { display: flex; }
           /* Clear the fixed 220px sidebar, but stay centered on wide screens. */
-          .app-main { margin-left: max(240px, calc(50vw - 510px)) !important; }
+          .app-main { margin-left: max(250px, calc(50vw - 510px)) !important; }
         }
         @keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @media (max-width: 640px) {
