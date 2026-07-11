@@ -153,12 +153,18 @@ const CURRENCY_CATALOG = [
 ].map(([code, name, symbol, locale, major, minor]) => ({ code, name, symbol, locale, words: { major, minor } }));
 const curCatalog = (code) => CURRENCY_CATALOG.find((c) => c.code === String(code || "").toUpperCase()) || null;
 
-// Live FX rates (free, keyless) with fallback providers — ad blockers and some
-// networks block individual rate hosts, so each source is tried in turn.
-// Returns units of each currency per 1 `base` keyed by UPPERCASE code; the app
-// stores rate = value of 1 unit in base, i.e. 1 / rates[code].
+// Live FX rates (free, keyless). The primary source is the app's own /api/rates
+// proxy — a same-origin request that ad blockers and DNS filters can't touch.
+// Third-party hosts remain as fallbacks (they also cover local dev, where the
+// serverless function isn't running). Returns units of each currency per 1
+// `base` keyed by UPPERCASE code; the app stores rate = 1 / rates[code].
 const fetchLiveRates = async (base) => {
   const b = String(base || "USD").toUpperCase();
+  const fromOwnApi = async () => {
+    const j = await (await fetch("/api/rates?base=" + encodeURIComponent(b))).json();
+    if (!j || j.result !== "success" || !j.rates) throw new Error("bad response");
+    return j.rates;
+  };
   const fromErApi = async () => {
     const j = await (await fetch("https://open.er-api.com/v6/latest/" + encodeURIComponent(b))).json();
     if (!j || j.result !== "success" || !j.rates) throw new Error("bad response");
@@ -173,6 +179,7 @@ const fetchLiveRates = async (base) => {
     return rates;
   };
   const sources = [
+    fromOwnApi,
     fromErApi,
     fromCurrencyApi("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/"),
     fromCurrencyApi("https://latest.currency-api.pages.dev/v1/currencies/"),
@@ -1933,7 +1940,7 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
             <span>base · rate 1.0000</span>
           </div>
           {(d.currencies || []).map((c, i) => (
-            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
               <select value={c.code || ""} onChange={(e) => pickRowCurrency(i, e.target.value)}
                 style={{ ...inpStyle, width: 150, cursor: "pointer", background: "var(--surface)", fontFamily: "'JetBrains Mono',monospace" }}>
                 <option value="">Pick…</option>
@@ -1943,7 +1950,7 @@ function SettingsPanel({ initial, onClose, onSave, onResetData }) {
               </select>
               <input placeholder="€" value={c.symbol || ""} onChange={(e) => setD((s) => ({ ...s, currencies: s.currencies.map((x, idx) => idx === i ? { ...x, symbol: e.target.value } : x) }))}
                 style={{ ...inpStyle, width: 52, textAlign: "center" }} />
-              <div style={{ position: "relative", flex: 1 }}>
+              <div style={{ position: "relative", flex: 1, minWidth: 140 }}>
                 <NumInput placeholder="rate in base" value={c.rate ?? ""} onChange={(v) => setD((s) => ({ ...s, currencies: s.currencies.map((x, idx) => idx === i ? { ...x, rate: v } : x) }))}
                   style={inpStyle} />
               </div>

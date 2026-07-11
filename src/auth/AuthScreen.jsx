@@ -108,7 +108,8 @@ export default function AuthScreen() {
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
     .lx { --bg:${T.bg}; --rule:${T.rule}; --ink:${T.ink}; --card:${T.card}; --field:${T.field};
       --sub:${T.sub}; --stamp:${T.stamp}; --on-stamp:${T.onStamp}; --err:${T.err};
-      position:fixed; inset:0; z-index:6000; display:flex; align-items:center; justify-content:center; padding:24px;
+      position:fixed; inset:0; z-index:6000; display:flex; justify-content:center; padding:24px 16px;
+      overflow-y:auto; -webkit-overflow-scrolling:touch;
       background:rgba(12,15,13,0.50);
       backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px);
       color:var(--ink); font-family:'Plus Jakarta Sans',system-ui,sans-serif;
@@ -118,8 +119,8 @@ export default function AuthScreen() {
     @keyframes lxDim{ from{ opacity:0; } to{ opacity:1; } }
     .lx *{ box-sizing:border-box; }
     .lx-mono{ font-family:'JetBrains Mono',ui-monospace,monospace; }
-    .lx-card{ width:100%; max-width:382px; background:var(--card); border:2px solid var(--ink);
-      box-shadow:8px 8px 0 var(--ink); border-radius:3px; overflow:hidden;
+    .lx-card{ width:100%; max-width:382px; margin:auto; background:var(--card); border:2px solid var(--ink);
+      box-shadow:8px 8px 0 var(--ink); border-radius:3px; overflow:hidden; flex:none;
       animation:lxDrop .5s cubic-bezier(.2,.9,.25,1) both; }
     @keyframes lxDrop{ from{ opacity:0; transform:translate(-5px,-7px); box-shadow:14px 16px 0 var(--ink); } to{ opacity:1; transform:translate(0,0); box-shadow:8px 8px 0 var(--ink); } }
 
