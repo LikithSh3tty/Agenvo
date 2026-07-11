@@ -1256,8 +1256,15 @@ function NavDrawer({ onClose, tabs, active, onChange, onSettings }) {
   );
 }
 
-// Shared nav for both agency modes. Desktop: horizontal tab row. Mobile (≤640px):
-// compact bar with the active tab's name and a hamburger opening NavDrawer.
+// Line icons for the sidebar, keyed by tab key across both agency modes.
+const NAV_ICONS = {
+  "Dashboard": "pie", "Add Sales": "edit", "Add Entry": "edit", "Clients": "users",
+  "Brands": "briefcase", "Categories": "tag", "Invoices": "printer", "History": "clock",
+};
+
+// Shared nav for both agency modes. Wide desktop (≥900px): fixed "ledger index"
+// sidebar where the active section is a thumb-tab poking through the right rule.
+// Mid: horizontal tab row. Mobile (≤640px): compact bar with hamburger + NavDrawer.
 function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   const { terms } = useConfig();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1273,28 +1280,43 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
     <>
       <nav className="no-print side-nav" aria-label="Primary" style={{
         position: "fixed", top: 0, left: 0, bottom: 0, width: 220, zIndex: 50,
-        flexDirection: "column", gap: 4, padding: "86px 14px 18px",
-        background: "var(--bg)", borderRight: "1px solid var(--card-border)",
-        overflowY: "auto",
+        flexDirection: "column", gap: 3, padding: "84px 16px 18px",
+        background: "var(--bg)", borderRight: "2px solid var(--ink)",
       }}>
-        <div style={{
-          fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "var(--text-muted)",
-          fontFamily: "'JetBrains Mono',monospace", padding: "0 14px", marginBottom: 8,
-        }}>Menu</div>
-        {tabs.map((t) => (
-          <button key={t.key} onClick={() => onChange(t.key)} style={{
-            display: "block", textAlign: "left", width: "100%",
-            background: active === t.key ? "var(--pop-dim)" : "transparent",
-            border: "1px solid " + (active === t.key ? "var(--pop-border)" : "transparent"),
-            padding: "11px 14px", borderRadius: 8, color: active === t.key ? "var(--pop)" : "var(--text-dim)",
-            cursor: "pointer", fontSize: 14, fontWeight: 600, transition: "all 0.2s",
-          }}>{t.label}</button>
-        ))}
-        <div style={{ marginTop: "auto", borderTop: "1px solid var(--card-border)", paddingTop: 10 }}>
-          <button onClick={onSettings} style={{
-            display: "flex", alignItems: "center", gap: 8, width: "100%",
-            background: "transparent", border: "1px solid transparent", padding: "11px 14px",
-            borderRadius: 8, color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", marginBottom: 12 }}>
+          <span style={{
+            fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase",
+            color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace",
+          }}>Index</span>
+          <span aria-hidden="true" style={{ flex: 1, height: 1, background: "var(--card-border)" }} />
+        </div>
+        {tabs.map((t) => {
+          const on = active === t.key;
+          return (
+            <button key={t.key} onClick={() => onChange(t.key)} aria-current={on ? "page" : undefined}
+              className={"snav-item" + (on ? " snav-active" : "")}
+              style={on ? {
+                display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                background: "var(--pop)", color: "var(--pop-fg)",
+                border: "1.5px solid var(--ink)", borderRadius: 2,
+                padding: "11px 22px 11px 12px", marginRight: -27,
+                fontSize: 14, fontWeight: 700, cursor: "default",
+                boxShadow: "3px 3px 0 var(--ink)",
+              } : {
+                display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                background: "transparent", border: "1.5px solid transparent", borderRadius: 2,
+                padding: "11px 12px", color: "var(--text-dim)",
+                cursor: "pointer", fontSize: 14, fontWeight: 600,
+              }}>
+              <Icon name={NAV_ICONS[t.key] || "tag"} size={15} />{t.label}
+            </button>
+          );
+        })}
+        <div style={{ marginTop: "auto", borderTop: "1px solid var(--card-border)", paddingTop: 12 }}>
+          <button onClick={onSettings} className="snav-item" style={{
+            display: "flex", alignItems: "center", gap: 10, width: "100%",
+            background: "transparent", border: "1.5px solid transparent", borderRadius: 2,
+            padding: "11px 12px", color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
           }}><Icon name="settings" size={15} />Settings</button>
         </div>
       </nav>
@@ -3699,6 +3721,8 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
 
         .mobile-nav { display: none; }
         .side-nav { display: none; }
+        .snav-item { transition: background .18s ease, color .18s ease, transform .18s ease; }
+        .snav-item:not(.snav-active):hover { background: rgba(var(--ink-rgb),0.05); color: var(--ink); transform: translateX(3px); }
         @media (min-width: 900px) {
           .desktop-nav { display: none !important; }
           .side-nav { display: flex; }
