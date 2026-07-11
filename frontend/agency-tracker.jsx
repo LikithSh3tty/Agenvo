@@ -2286,26 +2286,36 @@ function InsightsPanel({ highlights = [], delay = 0 }) {
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.2, fontFamily: "'Space Grotesk',sans-serif", marginBottom: 12 }}>Insights</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 12 }}>
-        {items.map((it, i) => (
-          <div key={i} className="lift" style={{
-            background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 14,
-            padding: "14px 16px", display: "flex", alignItems: "center", gap: 12,
-          }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: 8, flex: "none", display: "grid", placeItems: "center",
-              background: it.tone === "good" ? "rgba(22,163,74,0.1)" : it.tone === "bad" ? "rgba(239,68,68,0.1)" : "rgba(var(--ink-rgb),0.05)",
-              color: it.tone === "good" ? "#16A34A" : it.tone === "bad" ? "#ef4444" : C.textDim,
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+        {items.map((it, i) => {
+          const tc = it.tone === "good" ? { bg: "rgba(22,163,74,0.12)", fg: "#16A34A" }
+            : it.tone === "bad" ? { bg: "rgba(239,68,68,0.12)", fg: "#EF4444" }
+            : { bg: "rgba(var(--pop-rgb),0.14)", fg: "var(--pop)" };
+          return (
+            <div key={i} className="lift" style={{
+              background: C.card, border: "1px solid " + C.cardBorder, borderRadius: 14,
+              padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10,
             }}>
-              <Icon name={it.icon} size={18} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span style={{
+                  width: 22, height: 22, borderRadius: 7, flex: "none", display: "grid", placeItems: "center",
+                  background: tc.bg, color: tc.fg,
+                }}>
+                  <Icon name={it.icon} size={12} />
+                </span>
+                <span style={{
+                  fontSize: 10, color: C.textMuted, letterSpacing: 1, textTransform: "uppercase",
+                  fontFamily: "'JetBrains Mono',monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}>{it.label}</span>
+              </div>
+              <div title={String(it.value)} style={{
+                fontSize: 16.5, fontWeight: 700, letterSpacing: -0.2, lineHeight: 1.35,
+                fontFamily: "'Space Grotesk',sans-serif", fontVariantNumeric: "tabular-nums",
+                color: "var(--ink)", overflowWrap: "anywhere",
+              }}>{it.value}</div>
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 3, letterSpacing: 0.3, textTransform: "uppercase", fontFamily: "'JetBrains Mono',monospace" }}>{it.label}</div>
-              <div title={String(it.value)} style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3, overflowWrap: "anywhere",
-                color: it.tone === "good" ? C.earn : it.tone === "bad" ? "#ef4444" : "var(--ink)" }}>{it.value}</div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
