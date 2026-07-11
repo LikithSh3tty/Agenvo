@@ -1266,7 +1266,7 @@ const NAV_ICONS = {
 // sidebar where the active section is a thumb-tab poking through the right rule.
 // Mid: horizontal tab row. Mobile (≤640px): compact bar with hamburger + NavDrawer.
 function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
-  const { terms } = useConfig();
+  const { business, terms } = useConfig();
   const [menuOpen, setMenuOpen] = useState(false);
   const tabs = tabsProp || [
     { key: "Dashboard", label: "Dashboard" },
@@ -1278,6 +1278,29 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   const activeLabel = (tabs.find((t) => t.key === active) || tabs[0]).label;
   return (
     <>
+      <div className="no-print side-nav glass" style={{
+        position: "fixed", top: 14, left: 14, width: 220, height: 48, zIndex: 120,
+        alignItems: "center", gap: 10, padding: "0 12px",
+        background: "var(--header-bg)", border: "1px solid var(--card-border)",
+        borderRadius: 14,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10), 0 12px 30px rgba(0,0,0,0.14)",
+      }}>
+        {business.logo ? (
+          <img src={business.logo} alt={business.name} style={{
+            width: 28, height: 28, borderRadius: 7, objectFit: "contain", flex: "none",
+          }} />
+        ) : (
+          <div style={{
+            width: 28, height: 28, borderRadius: 7, flex: "none", display: "grid", placeItems: "center",
+            background: "var(--pop)", color: "var(--pop-fg)",
+            fontWeight: 800, fontSize: 15, fontFamily: "'Space Grotesk',sans-serif",
+          }}>{(business.name || "?").charAt(0).toUpperCase()}</div>
+        )}
+        <div style={{
+          fontSize: 15, fontWeight: 700, letterSpacing: -0.3, fontFamily: "'Space Grotesk',sans-serif",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>{business.name}</div>
+      </div>
       <nav className="no-print side-nav glass" aria-label="Primary" style={{
         position: "fixed", top: 74, left: 14, bottom: 14, width: 220, zIndex: 50,
         flexDirection: "column", gap: 4, padding: 12,
@@ -3725,6 +3748,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         @media (min-width: 900px) {
           .desktop-nav { display: none !important; }
           .side-nav { display: flex; }
+          .sidenav-hide { display: none !important; }
           /* Clear the fixed 220px sidebar, but stay centered on wide screens. */
           .app-main { margin-left: max(250px, calc(50vw - 510px)) !important; }
         }
@@ -3786,13 +3810,13 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         </div>
       )}
 
-      <div className="no-print" style={{
-        borderBottom: "2px solid var(--ink)", padding: "12px 0",
-        background: "var(--bg)",
+      <div className="no-print glass" style={{
+        padding: "12px 0",
+        background: "var(--header-bg)",
         position: "sticky", top: 0, zIndex: 100,
       }}>
         <div style={{ maxWidth: 1020, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="sidenav-hide" style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {config.business.logo ? (
               <img src={config.business.logo} alt={config.business.name} style={{
                 width: 32, height: 32, borderRadius: 8,
@@ -3811,7 +3835,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
               <div className="mobile-hide" style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "'JetBrains Mono',monospace", letterSpacing: 1 }}>{config.business.tagline}</div>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
             <ThemeToggle dark={dark} onToggle={toggleTheme} />
             <AccountMenu />
           </div>
