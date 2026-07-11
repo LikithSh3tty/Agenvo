@@ -1278,12 +1278,21 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   const activeLabel = (tabs.find((t) => t.key === active) || tabs[0]).label;
   return (
     <>
-      <nav className="no-print side-nav" aria-label="Primary" style={{
+      <nav className="no-print side-nav glass" aria-label="Primary" style={{
         position: "fixed", top: 74, left: 14, bottom: 14, width: 220, zIndex: 50,
         flexDirection: "column", gap: 4, padding: 12,
-        background: "var(--surface)", border: "1px solid var(--card-border)",
-        borderRadius: 14,
+        background: "var(--header-bg)", border: "1px solid var(--card-border)",
+        borderRadius: 14, overflow: "hidden",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10), 0 18px 44px rgba(0,0,0,0.16)",
       }}>
+        <div aria-hidden="true" style={{
+          position: "absolute", top: -70, right: -70, width: 190, height: 190,
+          borderRadius: "50%", background: "rgba(var(--pop-rgb),0.18)", filter: "blur(46px)",
+        }} />
+        <div aria-hidden="true" style={{
+          position: "absolute", bottom: -80, left: -60, width: 170, height: 170,
+          borderRadius: "50%", background: "rgba(var(--accent-rgb),0.07)", filter: "blur(40px)",
+        }} />
         {tabs.map((t) => {
           const on = active === t.key;
           return (
@@ -1291,6 +1300,7 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
               className={"snav-item" + (on ? " snav-active" : "")}
               style={{
                 display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                position: "relative",
                 background: on ? "var(--accent)" : "transparent",
                 border: "none", borderRadius: 9, padding: "11px 12px",
                 color: on ? "var(--accent-fg)" : "var(--text-dim)",
@@ -1303,7 +1313,7 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
         })}
         <div style={{ marginTop: "auto" }}>
           <button onClick={onSettings} className="snav-item" style={{
-            display: "flex", alignItems: "center", gap: 10, width: "100%",
+            display: "flex", alignItems: "center", gap: 10, width: "100%", position: "relative",
             background: "transparent", border: "none", borderRadius: 9,
             padding: "11px 12px", color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
           }}><Icon name="settings" size={15} />Settings</button>
