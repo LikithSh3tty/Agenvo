@@ -1,5 +1,6 @@
 """FastAPI wrapper around the assistant graph. Run: uvicorn server:app --port 8000"""
 import os
+import traceback
 
 from dotenv import load_dotenv
 
@@ -43,6 +44,7 @@ def chat(req: ChatRequest):
     try:
         return run_chat(req.message, req.history, req.snapshot)
     except Exception:
+        traceback.print_exc()
         return {"reply": "Something went wrong on my end. Please try again.", "route": "error"}
 
 

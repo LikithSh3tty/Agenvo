@@ -113,11 +113,15 @@ def parse_route(text):
     return {"route": route, "metric": metric}
 
 
+def _text(reply):
+    return reply.content if isinstance(reply.content, str) else str(reply.content)
+
+
 def router_node(state: ChatState) -> ChatState:
     reply = _llm(ROUTER_MODEL).invoke(
         _messages(ROUTER_SYSTEM, state.get("history"), state["message"])
     )
-    return {**state, **parse_route(reply.content if isinstance(reply.content, str) else str(reply.content))}
+    return {**state, **parse_route(_text(reply))}
 
 
 def compute_facts(metric, snapshot):
@@ -136,7 +140,7 @@ def analytics_node(state: ChatState) -> ChatState:
     reply = _llm(ANSWER_MODEL).invoke(
         _messages(system, state.get("history"), state["message"])
     )
-    return {**state, "facts": facts, "reply": reply.content}
+    return {**state, "facts": facts, "reply": _text(reply)}
 
 
 def navigation_node(state: ChatState) -> ChatState:
@@ -144,14 +148,14 @@ def navigation_node(state: ChatState) -> ChatState:
     reply = _llm(ANSWER_MODEL).invoke(
         _messages(system, state.get("history"), state["message"])
     )
-    return {**state, "reply": reply.content}
+    return {**state, "reply": _text(reply)}
 
 
 def clarify_node(state: ChatState) -> ChatState:
     reply = _llm(ROUTER_MODEL).invoke(
         _messages(CLARIFY_SYSTEM, state.get("history"), state["message"])
     )
-    return {**state, "reply": reply.content}
+    return {**state, "reply": _text(reply)}
 
 
 def _build():

@@ -120,7 +120,7 @@ export default function ChatWidget({ data, config }) {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") send(); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) send(); }}
               placeholder="Ask about the app or your numbers"
               style={{
                 flex: 1, padding: "10px 12px", borderRadius: 12, fontSize: 13.5, outline: "none",
