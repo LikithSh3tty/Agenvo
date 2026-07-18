@@ -98,3 +98,24 @@ def revenue_summary(snapshot):
         "client_count": len(snapshot.get("clients") or []),
         "team_member_count": len(snapshot.get("chatters") or []),
     }
+
+
+def client_list(snapshot):
+    """Every client by name (including ones with no sales yet) with their team."""
+    chatters = snapshot.get("chatters") or []
+    out = []
+    for c in snapshot.get("clients") or []:
+        out.append({
+            "name": c.get("name") or "Unnamed",
+            "team_members": [ch.get("name") or "Unnamed" for ch in chatters if ch.get("clientId") == c.get("id")],
+        })
+    return out
+
+
+def team_member_list(snapshot):
+    """Every team member by name with the client they work for."""
+    clients = {c.get("id"): c.get("name") or "Unnamed" for c in snapshot.get("clients") or []}
+    return [
+        {"name": ch.get("name") or "Unnamed", "client": clients.get(ch.get("clientId"))}
+        for ch in snapshot.get("chatters") or []
+    ]

@@ -17,7 +17,7 @@ import analytics
 ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "claude-haiku-4-5")
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-sonnet-5")
 
-METRICS = {"top_clients", "top_team_members", "best_day", "revenue_summary"}
+METRICS = {"top_clients", "top_team_members", "best_day", "revenue_summary", "list_clients", "list_team_members"}
 
 APP_GUIDE = (Path(__file__).parent / "app_guide.md").read_text(encoding="utf-8")
 
@@ -34,6 +34,8 @@ reply with ONLY a JSON object, no other text:
     "top_clients"      - best/top clients, client rankings, second top client
     "top_team_members" - best/top team members or chatters, rankings
     "best_day"         - best day, biggest day, day with most sales
+    "list_clients"     - list/show/name all their clients
+    "list_team_members" - list/show/name all their team members or chatters
     "revenue_summary"  - totals, earnings, team pay, counts, everything else
 - "clarify": greetings, ambiguous messages, or anything unrelated to agencyx.
 
@@ -158,6 +160,10 @@ def compute_facts(metric, snapshot):
         return {"top_team_members_ranked": analytics.top_team_members(snapshot, 5)}
     if metric == "best_day":
         return {"top_days_ranked": analytics.top_days(snapshot, 5)}
+    if metric == "list_clients":
+        return {"all_clients": analytics.client_list(snapshot)}
+    if metric == "list_team_members":
+        return {"all_team_members": analytics.team_member_list(snapshot)}
     return {"summary": analytics.revenue_summary(snapshot)}
 
 

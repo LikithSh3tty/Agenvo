@@ -109,3 +109,27 @@ def test_revenue_summary_empty():
     s = analytics.revenue_summary(EMPTY)
     assert s["total"] == 0.0
     assert s["sales_count"] == 0
+
+
+def test_client_list_includes_zero_sale_clients():
+    s = snap(
+        clients=[{"id": "c1", "name": "Acme"}, {"id": "c2", "name": "NewCo"}],
+        chatters=[{"id": "t1", "name": "Ana", "clientId": "c1"}],
+        records=[],
+    )
+    out = analytics.client_list(s)
+    assert [c["name"] for c in out] == ["Acme", "NewCo"]
+    assert out[0]["team_members"] == ["Ana"]
+    assert out[1]["team_members"] == []
+
+
+def test_client_list_empty():
+    assert analytics.client_list(EMPTY) == []
+
+
+def test_team_member_list():
+    out = analytics.team_member_list(BASIC)
+    assert out == [
+        {"name": "Ana", "client": "Acme"},
+        {"name": "Ben", "client": "Globex"},
+    ]
