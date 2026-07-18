@@ -114,7 +114,18 @@ def parse_route(text):
 
 
 def _text(reply):
-    return reply.content if isinstance(reply.content, str) else str(reply.content)
+    """Plain text from an AIMessage. Adaptive-thinking models return a list of
+    content blocks (thinking + text); keep only the text blocks."""
+    content = reply.content
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text") or "")
+    return "\n".join(p for p in parts if p).strip()
 
 
 def router_node(state: ChatState) -> ChatState:
