@@ -133,3 +133,9 @@ def test_team_member_list():
         {"name": "Ana", "client": "Acme"},
         {"name": "Ben", "client": "Globex"},
     ]
+
+
+def test_client_list_capped():
+    from analytics import MAX_LIST_ITEMS
+    s = snap(clients=[{"id": f"c{i}", "name": f"C{i}"} for i in range(MAX_LIST_ITEMS + 50)])
+    assert len(analytics.client_list(s)) == MAX_LIST_ITEMS

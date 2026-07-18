@@ -12,6 +12,10 @@ from http.server import BaseHTTPRequestHandler
 # Make the chatbot package (graph.py, analytics.py, app_guide.md) importable.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "chatbot"))
 
+# Reject payloads larger than this before reading them. Generous enough for a
+# large data snapshot, small enough to stop memory/cost-exhaustion abuse.
+MAX_BODY_BYTES = 2_000_000
+
 
 class handler(BaseHTTPRequestHandler):
     def _send(self, payload, status=200):
@@ -28,8 +32,18 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._send({"reply": "Bad request.", "route": "error"}, 400)
+            return
+        if length > MAX_BODY_BYTES:
+            self._send({"reply": "Request too large.", "route": "error"}, 413)
+            return
+        try:
             req = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError):
+            self._send({"reply": "Bad request.", "route": "error"}, 400)
+            return
+        if not isinstance(req, dict):
             self._send({"reply": "Bad request.", "route": "error"}, 400)
             return
         if not os.environ.get("ANTHROPIC_API_KEY"):

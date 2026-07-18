@@ -15,14 +15,23 @@ if (!window.storage) {
 if (typeof document !== "undefined") {
   document.body.style.background = "#FAFAFA";
 
-  // Show runtime errors in the page to help debugging when the app fails to render.
+  // Show runtime errors in the page to help debugging when the app fails to
+  // render. Build the DOM with textContent (never innerHTML) so an error
+  // message can't inject markup.
   window.addEventListener("error", (event) => {
     const root = document.getElementById("root");
     if (root) {
-      root.innerHTML = `<div style="padding:20px; font-family:system-ui, sans-serif; color:#fafafa; background:#111;">
-        <h2 style=\"color:#ff7f7f;\">App failed to render</h2>
-        <pre style=\"color:#ffdede; white-space: pre-wrap;\">${event.error?.stack || event.message}</pre>
-      </div>`;
+      root.replaceChildren();
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "padding:20px; font-family:system-ui, sans-serif; color:#fafafa; background:#111;";
+      const h = document.createElement("h2");
+      h.style.color = "#ff7f7f";
+      h.textContent = "App failed to render";
+      const pre = document.createElement("pre");
+      pre.style.cssText = "color:#ffdede; white-space: pre-wrap;";
+      pre.textContent = event.error?.stack || event.message || "Unknown error";
+      wrap.append(h, pre);
+      root.append(wrap);
     }
   });
 }

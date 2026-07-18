@@ -45,3 +45,30 @@ def test_text_joins_multiple_text_blocks():
         {"type": "text", "text": "Part two."},
     ])
     assert _text(reply) == "Part one.\nPart two."
+
+
+def test_sanitize_caps_message_length():
+    from graph import _sanitize, MAX_MESSAGE_CHARS
+    msg, _, _ = _sanitize("x" * 10000, [], {})
+    assert len(msg) == MAX_MESSAGE_CHARS
+
+
+def test_sanitize_bounds_and_normalizes_history():
+    from graph import _sanitize
+    hist = [{"role": "user", "content": "hi"}, "junk", {"role": "assistant", "content": "yo"}, {"role": "x", "content": "z"}]
+    _, clean, _ = _sanitize("q", hist * 10, {})
+    assert len(clean) <= 10
+    assert all(t["role"] in ("user", "assistant") for t in clean)
+    assert "junk" not in [t["content"] for t in clean]
+
+
+def test_sanitize_non_dict_snapshot_becomes_empty():
+    from graph import _sanitize
+    _, _, snap = _sanitize("q", [], "not a dict")
+    assert snap == {}
+
+
+def test_sanitize_handles_none_inputs():
+    from graph import _sanitize
+    msg, clean, snap = _sanitize(None, None, None)
+    assert msg == "" and clean == [] and snap == {}

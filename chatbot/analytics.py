@@ -100,11 +100,16 @@ def revenue_summary(snapshot):
     }
 
 
+# Bounds the size of a list rendered into an LLM prompt. Far above any real
+# agency's client/team count, so it never truncates a legitimate list.
+MAX_LIST_ITEMS = 1000
+
+
 def client_list(snapshot):
     """Every client by name (including ones with no sales yet) with their team."""
     chatters = snapshot.get("chatters") or []
     out = []
-    for c in snapshot.get("clients") or []:
+    for c in (snapshot.get("clients") or [])[:MAX_LIST_ITEMS]:
         out.append({
             "name": c.get("name") or "Unnamed",
             "team_members": [ch.get("name") or "Unnamed" for ch in chatters if ch.get("clientId") == c.get("id")],
@@ -117,5 +122,5 @@ def team_member_list(snapshot):
     clients = {c.get("id"): c.get("name") or "Unnamed" for c in snapshot.get("clients") or []}
     return [
         {"name": ch.get("name") or "Unnamed", "client": clients.get(ch.get("clientId"))}
-        for ch in snapshot.get("chatters") or []
+        for ch in (snapshot.get("chatters") or [])[:MAX_LIST_ITEMS]
     ]

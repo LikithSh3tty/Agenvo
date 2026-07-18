@@ -212,6 +212,31 @@ def _build():
 GRAPH = _build()
 
 
+# Defensive caps. The endpoint is public and unauthenticated, so these bound
+# token cost and memory per request. They're far above any legitimate chat use,
+# so they never alter behavior for real questions.
+MAX_MESSAGE_CHARS = 4000
+MAX_HISTORY_TURNS = 10
+MAX_TURN_CHARS = 4000
+
+
+def _sanitize(message, history, snapshot):
+    """Coerce and bound untrusted request inputs without changing real-use behavior."""
+    msg = str(message or "")[:MAX_MESSAGE_CHARS]
+    clean_history = []
+    if isinstance(history, list):
+        for turn in history[-MAX_HISTORY_TURNS:]:
+            if not isinstance(turn, dict):
+                continue
+            role = "assistant" if turn.get("role") == "assistant" else "user"
+            content = str(turn.get("content") or "")[:MAX_TURN_CHARS]
+            if content:
+                clean_history.append({"role": role, "content": content})
+    snap = snapshot if isinstance(snapshot, dict) else {}
+    return msg, clean_history, snap
+
+
 def run_chat(message, history, snapshot):
-    out = GRAPH.invoke({"message": message, "history": history or [], "snapshot": snapshot or {}})
+    message, history, snapshot = _sanitize(message, history, snapshot)
+    out = GRAPH.invoke({"message": message, "history": history, "snapshot": snapshot})
     return {"reply": out.get("reply") or "Sorry, I couldn't process that.", "route": out.get("route", "clarify")}

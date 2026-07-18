@@ -8,7 +8,7 @@ load_dotenv()  # must run before importing graph so models pick up env overrides
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from graph import run_chat
 
@@ -24,7 +24,8 @@ app.add_middleware(
 
 
 class ChatRequest(BaseModel):
-    message: str
+    # Cap message length at the edge; run_chat re-sanitizes as defense in depth.
+    message: str = Field(default="", max_length=8000)
     history: list = []
     snapshot: dict = {}
 
