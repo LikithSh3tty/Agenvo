@@ -1274,11 +1274,37 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem("agencyx-snav") === "collapsed"; } catch { return false; }
   });
+  // Drag-to-resize width for the expanded rail, remembered across sessions.
+  const NAV_MIN = 180, NAV_MAX = 340;
+  const [navWidth, setNavWidth] = useState(() => {
+    try { const w = parseInt(localStorage.getItem("agencyx-snav-w"), 10); if (w >= NAV_MIN && w <= NAV_MAX) return w; } catch { /* ignore */ }
+    return 220;
+  });
   useEffect(() => {
     try { localStorage.setItem("agencyx-snav", collapsed ? "collapsed" : "open"); } catch { /* ignore */ }
     // The content column reads this var to clear the rail (see .app-main CSS).
-    document.documentElement.style.setProperty("--snav-w", collapsed ? "94px" : "250px");
-  }, [collapsed]);
+    document.documentElement.style.setProperty("--snav-w", collapsed ? "94px" : (navWidth + 30) + "px");
+  }, [collapsed, navWidth]);
+  useEffect(() => {
+    try { localStorage.setItem("agencyx-snav-w", String(navWidth)); } catch { /* ignore */ }
+  }, [navWidth]);
+  const startNavResize = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX, startW = navWidth;
+    const onMove = (ev) => {
+      const w = Math.min(NAV_MAX, Math.max(NAV_MIN, startW + (ev.clientX - startX)));
+      setNavWidth(w);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
   const tabs = tabsProp || [
     { key: "Dashboard", label: "Dashboard" },
     { key: "Add Sales", label: "Add " + terms.revenue.one },
@@ -1290,7 +1316,7 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   return (
     <>
       <div className="no-print side-nav glass" style={{
-        position: "fixed", top: 14, left: 14, width: collapsed ? 64 : 220, height: 48, zIndex: 120,
+        position: "fixed", top: 14, left: 14, width: collapsed ? 64 : navWidth, height: 48, zIndex: 120,
         alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 8,
         padding: collapsed ? 0 : "0 14px",
         background: "var(--header-bg)", border: "1px solid var(--card-border)",
@@ -1310,12 +1336,22 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
         }} />
       </div>
       <nav className="no-print side-nav glass" aria-label="Primary" style={{
-        position: "fixed", top: 74, left: 14, bottom: 14, width: collapsed ? 64 : 220, zIndex: 50,
+        position: "fixed", top: 74, left: 14, bottom: 14, width: collapsed ? 64 : navWidth, zIndex: 50,
         flexDirection: "column", gap: 4, padding: 12,
         background: "var(--header-bg)", border: "1px solid var(--card-border)",
         borderRadius: 14, overflow: "hidden",
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10), 0 18px 44px rgba(0,0,0,0.16)",
       }}>
+        {!collapsed && (
+          <div className="snav-resize" onPointerDown={startNavResize}
+            role="separator" aria-orientation="vertical" aria-label="Resize sidebar"
+            title="Drag to resize" style={{
+              position: "absolute", top: 0, right: 0, width: 10, height: "100%", zIndex: 3,
+              cursor: "col-resize", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+            <span aria-hidden="true" style={{ width: 3, height: 34, borderRadius: 3, background: "var(--card-border)" }} />
+          </div>
+        )}
         <div aria-hidden="true" style={{
           position: "absolute", top: -70, right: -70, width: 190, height: 190,
           borderRadius: "50%", background: "rgba(var(--pop-rgb),0.18)", filter: "blur(46px)",
@@ -3775,6 +3811,8 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         .mobile-nav { display: none; }
         .side-nav { display: none; }
         .snav-item { transition: background .18s ease, color .18s ease; }
+        .snav-resize > span { transition: background .18s ease, height .18s ease; }
+        .snav-resize:hover > span { background: var(--pop); height: 48px; }
         .snav-item:not(.snav-active):hover { background: rgba(var(--ink-rgb),0.06); color: var(--ink); }
         .side-nav { transition: width .25s ease, left .25s ease; }
         @media (min-width: 900px) {
