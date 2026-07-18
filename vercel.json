@@ -2,7 +2,8 @@
     "version": 2,
     "builds": [
         { "src": "frontend/package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } },
-        { "src": "backend/api/*.js", "use": "@vercel/node" }
+        { "src": "backend/api/*.js", "use": "@vercel/node" },
+        { "src": "backend/api/assistant.py", "use": "@vercel/python" }
     ],
     "routes": [
         {
@@ -16,6 +17,7 @@
             },
             "continue": true
         },
+        { "src": "/api/assistant", "dest": "/backend/api/assistant.py" },
         { "src": "/api/(.*)", "dest": "/backend/api/$1.js" },
         { "handle": "filesystem" },
         { "src": "/(.*)", "dest": "/frontend/$1", "check": true },

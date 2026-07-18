@@ -1,8 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 
-// Floating in-app assistant. Talks to the local Python backend; hides itself
-// in production builds when no backend URL is configured.
-const BASE_URL = import.meta.env.VITE_CHATBOT_URL || (import.meta.env.DEV ? "http://localhost:8000" : "");
+// Floating in-app assistant. In dev it talks to the local uvicorn backend; in
+// production it uses the same-origin Vercel function. VITE_CHATBOT_URL
+// overrides with an external FastAPI host (routes live under {url}/chat).
+const CHAT_URL = import.meta.env.VITE_CHATBOT_URL
+  ? `${import.meta.env.VITE_CHATBOT_URL}/chat`
+  : import.meta.env.DEV
+    ? "http://localhost:8000/chat"
+    : "/api/assistant";
 
 const ChatIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -35,8 +40,6 @@ export default function ChatWidget({ data, config }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, open, busy]);
 
-  if (!BASE_URL) return null;
-
   const snapshot = () => ({
     clients: data.clients || [],
     chatters: data.chatters || [],
@@ -55,7 +58,7 @@ export default function ChatWidget({ data, config }) {
     setInput("");
     setBusy(true);
     try {
-      const res = await fetch(`${BASE_URL}/chat`, {
+      const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, history, snapshot: snapshot() }),
