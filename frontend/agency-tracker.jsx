@@ -1325,7 +1325,7 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
         }} />
       </div>
       <nav className="no-print side-nav glass" aria-label="Primary" style={{
-        position: "fixed", top: 74, left: 14, bottom: 14, width: collapsed ? 64 : navWidth, zIndex: 50,
+        position: "fixed", top: 74, left: 14, bottom: 14, width: collapsed ? 64 : 220, zIndex: 50,
         flexDirection: "column", gap: 4, padding: 12,
         background: "var(--header-bg)", border: "1px solid var(--card-border)",
         borderRadius: 14, overflow: "hidden",
