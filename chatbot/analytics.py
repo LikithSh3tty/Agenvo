@@ -42,7 +42,7 @@ def _ranked(buckets, base, n):
     for e in ranked:
         e["total"] = round(e["total"], 2)
         e["currency"] = base
-    return ranked[:n] if n else ranked
+    return ranked[:n] if n is not None else ranked
 
 
 def top_clients(snapshot, n=None):

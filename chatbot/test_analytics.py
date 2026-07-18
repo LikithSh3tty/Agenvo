@@ -42,6 +42,10 @@ def test_top_clients_limit():
     assert len(analytics.top_clients(BASIC, 1)) == 1
 
 
+def test_top_clients_zero_limit():
+    assert analytics.top_clients(BASIC, 0) == []
+
+
 def test_top_clients_ignores_orphan_records():
     s = snap(
         clients=[{"id": "c1", "name": "Acme"}],
