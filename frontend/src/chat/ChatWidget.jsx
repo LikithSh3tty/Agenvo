@@ -36,9 +36,67 @@ export default function ChatWidget({ data, config }) {
   const [messages, setMessages] = useState([{ role: "assistant", content: WELCOME }]);
   const scrollRef = useRef(null);
 
+  // Draggable: grab the launcher or the panel header to move the whole widget.
+  // Position is stored as offsets from the bottom-right corner so the panel
+  // keeps opening upward from the launcher; null = the default resting spot.
+  const [pos, setPos] = useState(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem("agencyx-chat-pos"));
+      if (p && Number.isFinite(p.right) && Number.isFinite(p.bottom)) return p;
+    } catch { /* ignore */ }
+    return null;
+  });
+  const rootRef = useRef(null);
+  const draggedRef = useRef(false); // suppresses the click that follows a drag
+
+  const clampPos = (right, bottom) => {
+    const el = rootRef.current;
+    const w = el ? el.offsetWidth : 52;
+    const h = el ? el.offsetHeight : 52;
+    return {
+      right: Math.min(Math.max(8, right), Math.max(8, window.innerWidth - w - 8)),
+      bottom: Math.min(Math.max(8, bottom), Math.max(8, window.innerHeight - h - 8)),
+    };
+  };
+
+  const startDrag = (e) => {
+    if (e.button !== 0 || !rootRef.current) return;
+    const rect = rootRef.current.getBoundingClientRect();
+    const orig = { right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.bottom };
+    const start = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    let last = null;
+    const onMove = (ev) => {
+      const dx = ev.clientX - start.x, dy = ev.clientY - start.y;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+      moved = true;
+      last = clampPos(orig.right - dx, orig.bottom - dy);
+      setPos(last);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      draggedRef.current = moved;
+      if (moved && last) {
+        try { localStorage.setItem("agencyx-chat-pos", JSON.stringify(last)); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, open, busy]);
+
+  // Opening the panel grows the widget upward; nudge it back on screen if the
+  // saved spot would push the panel past the top edge.
+  useEffect(() => {
+    if (pos && rootRef.current) {
+      const next = clampPos(pos.right, pos.bottom);
+      if (next.right !== pos.right || next.bottom !== pos.bottom) setPos(next);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const snapshot = () => ({
     clients: data.clients || [],
@@ -89,20 +147,21 @@ export default function ChatWidget({ data, config }) {
   };
 
   return (
-    <div className="no-print" style={{ position: "fixed", right: 22, bottom: 22, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+    <div ref={rootRef} className="no-print" style={{ position: "fixed", right: pos ? pos.right : 22, bottom: pos ? pos.bottom : 22, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
       {open && (
         <div style={{
           width: 360, height: 480, display: "flex", flexDirection: "column",
           background: "var(--card-bg)", border: "1px solid var(--card-border)",
           borderRadius: 18, overflow: "hidden", boxShadow: "0 18px 48px rgba(0,0,0,0.28)",
         }}>
-          <div style={{
+          <div onPointerDown={startDrag} title="Drag to move" style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "13px 16px", background: "var(--header-bg)", backdropFilter: "var(--blur)",
             borderBottom: "1px solid var(--card-border)",
+            cursor: "grab", touchAction: "none", userSelect: "none",
           }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif" }}>Assistant</div>
-            <button onClick={() => setOpen(false)} aria-label="Close assistant" style={{
+            <button onClick={() => setOpen(false)} onPointerDown={(e) => e.stopPropagation()} aria-label="Close assistant" style={{
               background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)",
               display: "grid", placeItems: "center", padding: 4,
             }}><CloseIcon /></button>
@@ -139,12 +198,18 @@ export default function ChatWidget({ data, config }) {
         </div>
       )}
 
-      <button onClick={() => setOpen((o) => !o)} aria-label="Open assistant" style={{
-        width: 52, height: 52, borderRadius: 999, border: "1px solid var(--card-border)",
-        background: open ? "var(--surface2)" : "var(--pop)", color: open ? "var(--ink)" : "var(--pop-fg)",
-        cursor: "pointer", display: "grid", placeItems: "center",
-        boxShadow: "0 10px 28px rgba(0,0,0,0.24)",
-      }}><ChatIcon /></button>
+      <button
+        onPointerDown={startDrag}
+        onClick={() => {
+          if (draggedRef.current) { draggedRef.current = false; return; }
+          setOpen((o) => !o);
+        }}
+        aria-label="Open assistant" title="Click to chat, drag to move" style={{
+          width: 52, height: 52, borderRadius: 999, border: "1px solid var(--card-border)",
+          background: open ? "var(--surface2)" : "var(--pop)", color: open ? "var(--ink)" : "var(--pop-fg)",
+          cursor: "pointer", display: "grid", placeItems: "center", touchAction: "none",
+          boxShadow: "0 10px 28px rgba(0,0,0,0.24)",
+        }}><ChatIcon /></button>
     </div>
   );
 }

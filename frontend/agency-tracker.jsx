@@ -1309,20 +1309,6 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
           marginLeft: collapsed ? 0 : "auto",
         }} />
       </div>
-      <button className="no-print side-nav" onClick={() => setCollapsed((c) => !c)}
-        aria-label={collapsed ? "Expand menu" : "Collapse menu"}
-        title={collapsed ? "Expand menu" : "Collapse menu"}
-        style={{
-          position: "fixed", top: 25, left: collapsed ? 65 : 221, width: 26, height: 26, zIndex: 130,
-          alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%",
-          background: "var(--surface)", border: "1px solid var(--card-border)",
-          color: "var(--text-dim)", cursor: "pointer",
-          boxShadow: "0 6px 14px rgba(0,0,0,0.18)",
-        }}>
-        <Icon name="chevron-left" size={13} style={{
-          transform: collapsed ? "rotate(180deg)" : "none", transition: "transform .25s ease",
-        }} />
-      </button>
       <nav className="no-print side-nav glass" aria-label="Primary" style={{
         position: "fixed", top: 74, left: 14, bottom: 14, width: collapsed ? 64 : 220, zIndex: 50,
         flexDirection: "column", gap: 4, padding: 12,
@@ -1363,6 +1349,18 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
             background: "transparent", border: "none", borderRadius: 9,
             padding: collapsed ? "11px 0" : "11px 12px", color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
           }}><Icon name="settings" size={15} />{!collapsed && "Settings"}</button>
+          <button onClick={() => setCollapsed((c) => !c)} className="snav-item"
+            aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+            title={collapsed ? "Expand menu" : "Collapse"} style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%", position: "relative",
+              justifyContent: collapsed ? "center" : "flex-start",
+              background: "transparent", border: "none", borderRadius: 9,
+              padding: collapsed ? "11px 0" : "11px 12px", color: "var(--text-muted)", cursor: "pointer", fontSize: 14, fontWeight: 600,
+            }}>
+            <Icon name="chevron-left" size={15} style={{
+              transform: collapsed ? "rotate(180deg)" : "none", transition: "transform .25s ease",
+            }} />{!collapsed && "Collapse"}
+          </button>
         </div>
       </nav>
       <div className="no-print desktop-nav" style={{
