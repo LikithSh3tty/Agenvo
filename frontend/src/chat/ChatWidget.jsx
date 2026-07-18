@@ -148,6 +148,8 @@ export default function ChatWidget({ data, config }) {
 
   return (
     <div ref={rootRef} className="no-print" style={{ position: "fixed", right: pos ? pos.right : 22, bottom: pos ? pos.bottom : 22, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+      <style>{`.agx-chat-input{color:var(--ink);-webkit-text-fill-color:var(--ink);}
+        .agx-chat-input::placeholder{color:var(--text-muted);-webkit-text-fill-color:var(--text-muted);opacity:1;}`}</style>
       {open && (
         <div style={{
           width: 360, height: 480, display: "flex", flexDirection: "column",
@@ -184,10 +186,11 @@ export default function ChatWidget({ data, config }) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) send(); }}
               placeholder="Ask about the app or your numbers"
+              className="agx-chat-input"
               style={{
                 flex: 1, padding: "10px 12px", borderRadius: 12, fontSize: 14.5, fontWeight: 500, outline: "none",
-                background: "var(--field-bg)", border: "1px solid var(--field-border)", color: "var(--ink)",
-                caretColor: "var(--pop)",
+                background: "var(--surface2)", border: "1px solid var(--card-border)",
+                color: "var(--ink)", WebkitTextFillColor: "var(--ink)", caretColor: "var(--pop)",
               }}
             />
             <button onClick={send} disabled={busy || !input.trim()} aria-label="Send" style={{

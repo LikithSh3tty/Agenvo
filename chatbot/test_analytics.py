@@ -139,3 +139,26 @@ def test_client_list_capped():
     from analytics import MAX_LIST_ITEMS
     s = snap(clients=[{"id": f"c{i}", "name": f"C{i}"} for i in range(MAX_LIST_ITEMS + 50)])
     assert len(analytics.client_list(s)) == MAX_LIST_ITEMS
+
+
+def test_daily_breakdown_has_cuts_per_date():
+    s = snap(
+        clients=[{"id": "c1", "name": "Acme"}],
+        chatters=[{"id": "t1", "name": "Ana", "clientId": "c1"}],
+        records=[
+            {"id": "r1", "chatterId": "t1", "amount": 100, "date": "2026-07-07", "agencyCut": 40, "chatterCut": 60, "currency": "USD"},
+            {"id": "r2", "chatterId": "t1", "amount": 50, "date": "2026-07-07", "agencyCut": 20, "chatterCut": 30, "currency": "USD"},
+            {"id": "r3", "chatterId": "t1", "amount": 80, "date": "2026-07-01", "agencyCut": 32, "chatterCut": 48, "currency": "USD"},
+        ],
+    )
+    rows = analytics.daily_breakdown(s)
+    assert rows[0]["date"] == "2026-07-07"  # newest first
+    assert rows[0]["total"] == 150.0
+    assert rows[0]["agency_earnings"] == 60.0
+    assert rows[0]["team_pay"] == 90.0
+    assert rows[0]["sales"] == 2
+    assert rows[1]["date"] == "2026-07-01"
+
+
+def test_daily_breakdown_empty():
+    assert analytics.daily_breakdown(EMPTY) == []

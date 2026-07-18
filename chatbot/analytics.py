@@ -80,6 +80,27 @@ def top_days(snapshot, n=None):
     return _ranked(buckets, base, n)
 
 
+def daily_breakdown(snapshot):
+    """Per-date totals with agency and team cuts, newest first. Lets the model
+    answer 'revenue / agency cut / team pay on <date>' from real numbers."""
+    base, rates = _rates(snapshot)
+    buckets = {}
+    for r, chatter, client in _rows(snapshot):
+        date = r.get("date") or "unknown"
+        e = buckets.setdefault(date, {"date": date, "total": 0.0, "agency_earnings": 0.0, "team_pay": 0.0, "sales": 0})
+        e["total"] += _to_base(r.get("amount"), r.get("currency"), rates)
+        e["agency_earnings"] += _to_base(r.get("agencyCut"), r.get("currency"), rates)
+        e["team_pay"] += _to_base(r.get("chatterCut"), r.get("currency"), rates)
+        e["sales"] += 1
+    rows = sorted(buckets.values(), key=lambda e: e["date"], reverse=True)
+    for e in rows:
+        e["total"] = round(e["total"], 2)
+        e["agency_earnings"] = round(e["agency_earnings"], 2)
+        e["team_pay"] = round(e["team_pay"], 2)
+        e["currency"] = base
+    return rows[:MAX_LIST_ITEMS]
+
+
 def revenue_summary(snapshot):
     base, rates = _rates(snapshot)
     total = agency = team = 0.0

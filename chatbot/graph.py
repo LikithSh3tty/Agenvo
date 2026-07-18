@@ -17,7 +17,7 @@ import analytics
 ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "claude-haiku-4-5")
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-sonnet-5")
 
-METRICS = {"top_clients", "top_team_members", "best_day", "revenue_summary", "list_clients", "list_team_members"}
+METRICS = {"top_clients", "top_team_members", "best_day", "revenue_summary", "list_clients", "list_team_members", "by_date"}
 
 APP_GUIDE = (Path(__file__).parent / "app_guide.md").read_text(encoding="utf-8")
 
@@ -34,9 +34,11 @@ reply with ONLY a JSON object, no other text:
     "top_clients"      - best/top clients, client rankings, second top client
     "top_team_members" - best/top team members or chatters, rankings
     "best_day"         - best day, biggest day, day with most sales
+    "by_date"          - anything about a SPECIFIC day or date they name
+                         (revenue, agency cut/fee, team pay, or sales on that day)
     "list_clients"     - list/show/name all their clients
     "list_team_members" - list/show/name all their team members or chatters
-    "revenue_summary"  - totals, earnings, team pay, counts, everything else
+    "revenue_summary"  - overall totals, earnings, team pay, counts, everything else
 - "clarify": greetings, ambiguous messages, or anything unrelated to agencyx.
 
 Follow-ups like "and the second one?" keep the route/metric of the question
@@ -80,6 +82,9 @@ using ONLY the numbers in the FACTS block below. Rules:
   to the Add Sales tab instead of making numbers up.
 - Amounts are in the currency given in FACTS. Format amounts with the currency
   code, e.g. "1,250.00 USD".
+- For a question about a specific date: match it to the date in a daily
+  breakdown (dates are ISO like 2026-07-07). If that date isn't there, it just
+  means nothing was logged that day - say so plainly; don't call it missing data.
 
 """ + TONE + """
 
@@ -190,6 +195,8 @@ def compute_facts(metric, snapshot):
         return {"all_clients": analytics.client_list(snapshot)}
     if metric == "list_team_members":
         return {"all_team_members": analytics.team_member_list(snapshot)}
+    if metric == "by_date":
+        return {"daily_breakdown": analytics.daily_breakdown(snapshot)}
     return {"summary": analytics.revenue_summary(snapshot)}
 
 
