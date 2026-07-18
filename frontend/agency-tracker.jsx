@@ -2572,7 +2572,7 @@ function ManagementApp({ data, persist, config, onSettings, onInvoice, onExport,
   const mgmtHighlights = [
     payDelta != null && { icon: payDelta >= 0 ? "trending-up" : "trending-down", label: "Payments vs last month", value: (payDelta >= 0 ? "+" : "") + payDelta + "%", tone: payDelta >= 0 ? "good" : "bad" },
     profitDelta != null && { icon: profitDelta >= 0 ? "trending-up" : "trending-down", label: "Profit vs last month", value: (profitDelta >= 0 ? "+" : "") + profitDelta + "%", tone: profitDelta >= 0 ? "good" : "bad" },
-    topBrand && { icon: "award", label: "Most profitable", value: topBrand.name + " · " + fmt(topBrand.profit), tone: "good" },
+    topBrand && { icon: "award", label: "Most profitable", value: topBrand.name + " · " + fmt(topBrand.profit) },
     lowBrand && { icon: lowBrand.margin < 20 ? "alert" : "pie", label: "Lowest margin", value: lowBrand.name + " · " + lowBrand.margin.toFixed(0) + "%", tone: lowBrand.margin < 20 ? "bad" : "neutral" },
     bestDay && { icon: "flame", label: "Best day", value: mDate(bestDay[0]) + " · " + fmt(bestDay[1]) },
     shown.length > 0 && { icon: "file-text", label: "Avg profit / entry", value: fmt(avgProfit) },
@@ -3599,7 +3599,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   const avgSale = dashRecs.length ? money(totalSales / dashRecs.length) : 0;
   const serviceHighlights = [
     salesDelta != null && { icon: salesDelta >= 0 ? "trending-up" : "trending-down", label: t.revenue.many + " vs last month", value: (salesDelta >= 0 ? "+" : "") + salesDelta + "%", tone: salesDelta >= 0 ? "good" : "bad" },
-    topClient && topClient.total > 0 && { icon: "award", label: "Top " + t.client.one.toLowerCase(), value: topClient.name + " · " + fmtIn(topClient.total, topClient.currency), tone: "good" },
+    topClient && topClient.total > 0 && { icon: "award", label: "Top " + t.client.one.toLowerCase(), value: topClient.name + " · " + fmtIn(topClient.total, topClient.currency) },
     topEarner && topEarner.total > 0 && { icon: "star", label: "Top " + t.staff.one.toLowerCase(), value: topEarner.name + " · " + fmtIn(topEarner.total, topEarner.currency) },
     bestSalesDay && { icon: "flame", label: "Best day", value: shortDate(bestSalesDay[0]) + " · " + fmtIn(inDisp(bestSalesDay[1]), dispCode) },
     dashRecs.length > 0 && { icon: "file-text", label: "Avg " + t.revenue.one.toLowerCase(), value: fmtIn(inDisp(avgSale), dispCode) },
