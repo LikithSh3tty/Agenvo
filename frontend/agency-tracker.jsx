@@ -3,6 +3,7 @@ import AccountMenu from "./src/auth/AccountMenu.jsx";
 import { useAuth } from "./src/auth/AuthContext.jsx";
 import DeleteAccountSection from "./src/auth/DeleteAccountSection.jsx";
 import ResetDataSection from "./src/auth/ResetDataSection.jsx";
+import ChatWidget from "./src/chat/ChatWidget.jsx";
 
 const STORAGE_KEY = "fanlink-tracker-v4";
 const THEME_KEY = "agencyx-theme"; // "light" | "dark"; falls back to OS preference
@@ -4747,6 +4748,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         </div>
       </Modal>
     </div >
+    <ChatWidget data={data} config={config} />
     </ConfigContext.Provider>
   );
 }
