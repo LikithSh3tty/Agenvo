@@ -1274,22 +1274,20 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem("agencyx-snav") === "collapsed"; } catch { return false; }
   });
-  // Drag-to-resize width for the expanded rail, remembered across sessions.
-  const NAV_MIN = 180, NAV_MAX = 340;
-  const [navWidth, setNavWidth] = useState(() => {
-    try { const w = parseInt(localStorage.getItem("agencyx-snav-w"), 10); if (w >= NAV_MIN && w <= NAV_MAX) return w; } catch { /* ignore */ }
-    return 220;
-  });
   useEffect(() => {
     try { localStorage.setItem("agencyx-snav", collapsed ? "collapsed" : "open"); } catch { /* ignore */ }
     // The content column reads this var to clear the rail (see .app-main CSS).
-    document.documentElement.style.setProperty("--snav-w", collapsed ? "94px" : (navWidth + 30) + "px");
-  }, [collapsed, navWidth]);
-  useEffect(() => {
-    try { localStorage.setItem("agencyx-snav-w", String(navWidth)); } catch { /* ignore */ }
-  }, [navWidth]);
-  const NAV_STEP = 20;
-  const stepNavWidth = (dir) => setNavWidth((w) => Math.min(NAV_MAX, Math.max(NAV_MIN, w + dir * NAV_STEP)));
+    document.documentElement.style.setProperty("--snav-w", collapsed ? "94px" : "250px");
+  }, [collapsed]);
+  // Label that slides + fades as the rail expands/collapses (keeps it in the DOM
+  // so the transition is smooth instead of popping).
+  const navLabel = (text) => (
+    <span style={{
+      whiteSpace: "nowrap", overflow: "hidden",
+      maxWidth: collapsed ? 0 : 180, opacity: collapsed ? 0 : 1,
+      transition: "max-width .22s cubic-bezier(.4,0,.2,1), opacity .18s ease",
+    }}>{text}</span>
+  );
   const tabs = tabsProp || [
     { key: "Dashboard", label: "Dashboard" },
     { key: "Add Sales", label: "Add " + terms.revenue.one },
@@ -1301,23 +1299,29 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
   return (
     <>
       <div className="no-print side-nav glass" style={{
-        position: "fixed", top: 14, left: 14, width: collapsed ? 64 : navWidth, height: 48, zIndex: 120,
-        alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 8,
-        padding: collapsed ? 0 : "0 14px",
+        position: "fixed", top: 14, left: 14, width: collapsed ? 64 : 220, height: 48, zIndex: 120,
+        alignItems: "center", justifyContent: "flex-start", gap: 10,
+        padding: collapsed ? 0 : "0 12px",
         background: "var(--header-bg)", border: "1px solid var(--card-border)",
         borderRadius: 14,
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10), 0 12px 30px rgba(0,0,0,0.14)",
       }}>
-        {!collapsed && (
-          <div style={{
-            fontSize: 17, fontWeight: 700, letterSpacing: -0.4, color: "var(--ink)",
-            fontFamily: "'Space Grotesk',sans-serif", whiteSpace: "nowrap",
-          }}>agencyx</div>
-        )}
+        <button onClick={() => setCollapsed((c) => !c)} className="snav-burger"
+          aria-label={collapsed ? "Expand menu" : "Collapse menu"} aria-expanded={!collapsed}
+          title={collapsed ? "Expand menu" : "Collapse menu"} style={{
+            flex: "none", width: collapsed ? 64 : 34, height: collapsed ? 46 : 34, display: "grid", placeItems: "center",
+            background: "transparent", border: "none", borderRadius: 9, color: "var(--text-dim)", cursor: "pointer",
+          }}><Icon name="menu" size={18} /></button>
+        <div style={{
+          fontSize: 17, fontWeight: 700, letterSpacing: -0.4, color: "var(--ink)",
+          fontFamily: "'Space Grotesk',sans-serif",
+          whiteSpace: "nowrap", overflow: "hidden",
+          maxWidth: collapsed ? 0 : 160, opacity: collapsed ? 0 : 1,
+          transition: "max-width .22s cubic-bezier(.4,0,.2,1), opacity .18s ease",
+        }}>agencyx</div>
         <span aria-hidden="true" style={{
-          width: collapsed ? 12 : 9, height: collapsed ? 12 : 9, flex: "none",
-          background: "var(--pop)", borderRadius: 3,
-          marginLeft: collapsed ? 0 : "auto",
+          width: 9, height: 9, flex: "none", background: "var(--pop)", borderRadius: 3,
+          marginLeft: "auto", opacity: collapsed ? 0 : 1, transition: "opacity .18s ease",
         }} />
       </div>
       <nav className="no-print side-nav glass" aria-label="Primary" style={{
@@ -1341,7 +1345,7 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
             <button key={t.key} onClick={() => onChange(t.key)} aria-current={on ? "page" : undefined}
               className={"snav-item" + (on ? " snav-active" : "")} title={collapsed ? t.label : undefined}
               style={{
-                display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                display: "flex", alignItems: "center", gap: collapsed ? 0 : 10, textAlign: "left",
                 position: "relative", justifyContent: collapsed ? "center" : "flex-start",
                 background: on ? "var(--accent)" : "transparent",
                 border: "none", borderRadius: 9, padding: collapsed ? "11px 0" : "11px 12px",
@@ -1349,53 +1353,17 @@ function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
                 cursor: on ? "default" : "pointer", fontSize: 14, fontWeight: on ? 700 : 600,
                 boxShadow: on ? "0 6px 16px rgba(0,0,0,0.18)" : "none",
               }}>
-              <Icon name={NAV_ICONS[t.key] || "tag"} size={15} />{!collapsed && t.label}
+              <Icon name={NAV_ICONS[t.key] || "tag"} size={15} />{navLabel(t.label)}
             </button>
           );
         })}
         <div style={{ marginTop: "auto" }}>
-          {!collapsed && (
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              gap: 8, padding: "6px 12px 8px", color: "var(--text-muted)", fontSize: 13, fontWeight: 600,
-            }}>
-              <span>Width</span>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => stepNavWidth(-1)} disabled={navWidth <= NAV_MIN}
-                  aria-label="Narrower sidebar" title="Narrower" style={{
-                    width: 24, height: 24, display: "grid", placeItems: "center", borderRadius: 7,
-                    background: "var(--surface2)", border: "1px solid var(--card-border)",
-                    color: "var(--text-dim)", cursor: navWidth <= NAV_MIN ? "default" : "pointer",
-                    opacity: navWidth <= NAV_MIN ? 0.4 : 1, fontSize: 15, lineHeight: 1, padding: 0,
-                  }}>−</button>
-                <button onClick={() => stepNavWidth(1)} disabled={navWidth >= NAV_MAX}
-                  aria-label="Wider sidebar" title="Wider" style={{
-                    width: 24, height: 24, display: "grid", placeItems: "center", borderRadius: 7,
-                    background: "var(--surface2)", border: "1px solid var(--card-border)",
-                    color: "var(--text-dim)", cursor: navWidth >= NAV_MAX ? "default" : "pointer",
-                    opacity: navWidth >= NAV_MAX ? 0.4 : 1, fontSize: 15, lineHeight: 1, padding: 0,
-                  }}>+</button>
-              </div>
-            </div>
-          )}
           <button onClick={onSettings} className="snav-item" title={collapsed ? "Settings" : undefined} style={{
-            display: "flex", alignItems: "center", gap: 10, width: "100%", position: "relative",
+            display: "flex", alignItems: "center", gap: collapsed ? 0 : 10, width: "100%", position: "relative",
             justifyContent: collapsed ? "center" : "flex-start",
             background: "transparent", border: "none", borderRadius: 9,
             padding: collapsed ? "11px 0" : "11px 12px", color: "var(--text-dim)", cursor: "pointer", fontSize: 14, fontWeight: 600,
-          }}><Icon name="settings" size={15} />{!collapsed && "Settings"}</button>
-          <button onClick={() => setCollapsed((c) => !c)} className="snav-item"
-            aria-label={collapsed ? "Expand menu" : "Collapse menu"}
-            title={collapsed ? "Expand menu" : "Collapse"} style={{
-              display: "flex", alignItems: "center", gap: 10, width: "100%", position: "relative",
-              justifyContent: collapsed ? "center" : "flex-start",
-              background: "transparent", border: "none", borderRadius: 9,
-              padding: collapsed ? "11px 0" : "11px 12px", color: "var(--text-muted)", cursor: "pointer", fontSize: 14, fontWeight: 600,
-            }}>
-            <Icon name="chevron-left" size={15} style={{
-              transform: collapsed ? "rotate(180deg)" : "none", transition: "transform .25s ease",
-            }} />{!collapsed && "Collapse"}
-          </button>
+          }}><Icon name="settings" size={15} />{navLabel("Settings")}</button>
         </div>
       </nav>
       <div className="no-print desktop-nav" style={{
@@ -3810,7 +3778,9 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         .mobile-nav { display: none; }
         .side-nav { display: none; }
         .snav-item { transition: background .18s ease, color .18s ease; }
-        .side-nav { transition: width .2s cubic-bezier(.4,0,.2,1); }
+        .side-nav { transition: width .22s cubic-bezier(.4,0,.2,1), padding .22s cubic-bezier(.4,0,.2,1); }
+        .snav-burger { transition: color .18s ease, background .18s ease; }
+        .snav-burger:hover { color: var(--ink); background: var(--surface2); }
         .snav-item:not(.snav-active):hover { background: rgba(var(--ink-rgb),0.06); color: var(--ink); }
         .side-nav { transition: width .25s ease, left .25s ease; }
         @media (min-width: 900px) {
