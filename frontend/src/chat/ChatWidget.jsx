@@ -134,8 +134,8 @@ export default function ChatWidget({ data, config }) {
     return (
       <div key={i} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
         <div style={{
-          maxWidth: "82%", padding: "9px 13px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.45,
-          whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxWidth: "84%", padding: "10px 14px", borderRadius: 14, fontSize: 14.5, lineHeight: 1.55,
+          fontWeight: 500, whiteSpace: "pre-wrap", wordBreak: "break-word",
           background: mine ? "var(--pop)" : "var(--surface2)",
           color: mine ? "var(--pop-fg)" : "var(--ink)",
           border: mine ? "none" : "1px solid var(--card-border)",
@@ -171,7 +171,7 @@ export default function ChatWidget({ data, config }) {
             {messages.map(bubble)}
             {busy && (
               <div style={{ display: "flex" }}>
-                <div style={{ padding: "9px 13px", borderRadius: 14, background: "var(--surface2)", border: "1px solid var(--card-border)", color: "var(--text-muted)", fontSize: 13.5 }}>
+                <div style={{ padding: "10px 14px", borderRadius: 14, background: "var(--surface2)", border: "1px solid var(--card-border)", color: "var(--text-dim)", fontSize: 14.5, fontWeight: 500 }}>
                   Thinking…
                 </div>
               </div>
@@ -185,8 +185,9 @@ export default function ChatWidget({ data, config }) {
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) send(); }}
               placeholder="Ask about the app or your numbers"
               style={{
-                flex: 1, padding: "10px 12px", borderRadius: 12, fontSize: 13.5, outline: "none",
+                flex: 1, padding: "10px 12px", borderRadius: 12, fontSize: 14.5, fontWeight: 500, outline: "none",
                 background: "var(--field-bg)", border: "1px solid var(--field-border)", color: "var(--ink)",
+                caretColor: "var(--pop)",
               }}
             />
             <button onClick={send} disabled={busy || !input.trim()} aria-label="Send" style={{
