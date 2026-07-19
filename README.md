@@ -63,8 +63,10 @@ The frontend sends a snapshot of your (already-loaded) data with each message, s
 ```
 agency/
 ├── frontend/
-│   ├── agency-tracker.jsx    # the whole app — dashboard, sales, clients, invoices, history
 │   ├── src/
+│   │   ├── tracker/          # the app, split by concern — App.jsx plus currency,
+│   │   │                     #   config, theme, ui, charts, nav, invoice, settings,
+│   │   │                     #   onboarding, management modules
 │   │   ├── auth/             # Firebase auth + per-user Firestore storage
 │   │   └── chat/
 │   │       └── ChatWidget.jsx   # the floating assistant window

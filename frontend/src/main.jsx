@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "../agency-tracker.jsx";
+import App from "./tracker/App.jsx";
 import { AuthProvider } from "./auth/AuthContext.jsx";
 import AuthGate from "./auth/AuthGate.jsx";
 import { makeGuestStorage } from "./auth/userStorage.js";
