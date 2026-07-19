@@ -621,7 +621,7 @@ export function ManagementApp({ data, persist, config, onSettings, onInvoice, on
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>Backup &amp; restore</div>
               <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>
-                Your data is stored only in this browser. Save a backup file regularly so you don't lose it.
+                Your data syncs to your account in the cloud. Save a backup file now and then for extra safety.
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>

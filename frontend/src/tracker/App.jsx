@@ -999,7 +999,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                           <Avatar name={cl.name} size={32} color={clientColor(cl)} />
                           <div>
                             <span style={{ fontWeight: 600, fontSize: 14 }}>{cl.name}</span>
-                            <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: 8 }}>{cl.chatterCount} chatters</span>
+                            <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: 8 }}>{cl.chatterCount} {(cl.chatterCount === 1 ? t.staff.one : t.staff.many).toLowerCase()}</span>
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1399,7 +1399,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>Backup &amp; restore</div>
                 <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>
-                  Your data is stored only in this browser. Save a backup file regularly so you don't lose it.
+                  Your data syncs to your account in the cloud. Save a backup file now and then for extra safety.
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -1420,9 +1420,9 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                   {data.clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
                 </select>
               </Field>
-              <Field label="Chatter">
-                <select value={filterChatter} aria-label="Filter by chatter" onChange={(e) => setFilterChatter(e.target.value)} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
-                  <option value="all">All Chatters</option>
+              <Field label={t.staff.one}>
+                <select value={filterChatter} aria-label={`Filter by ${t.staff.one.toLowerCase()}`} onChange={(e) => setFilterChatter(e.target.value)} style={{ ...inpStyle, cursor: "pointer", background: "var(--surface)" }}>
+                  <option value="all">All {t.staff.many}</option>
                   {(filterClient === "all" ? data.chatters : data.chatters.filter((ch) => ch.clientId === filterClient)).map((ch) => (
                     <option key={ch.id} value={ch.id}>{ch.name}</option>
                   ))}
