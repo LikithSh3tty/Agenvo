@@ -14,7 +14,7 @@ from graph import run_chat
 
 HAS_KEY = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
-app = FastAPI(title="agenvo assistant")
+app = FastAPI(title="Agenvo assistant")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],

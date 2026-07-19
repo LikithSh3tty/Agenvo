@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Auth backend for agenvo — Firebase Auth.
+// Auth backend for Agenvo — Firebase Auth.
 //
 // Components only ever talk to the exports below, so the rest of the app is
 // decoupled from Firebase specifics:

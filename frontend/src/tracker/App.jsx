@@ -475,7 +475,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     const payload = JSON.stringify({ _app: "agenvo-tracker", _version: 5, _exportedAt: new Date().toISOString(), ...data }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const slug = (config.business.name || "agenvo").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agenvo";
+    const slug = (config.business.name || "Agenvo").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "Agenvo";
     const a = document.createElement("a"); a.href = url; a.download = `${slug}-backup-${today()}.json`; a.click();
     URL.revokeObjectURL(url);
   };

@@ -112,7 +112,7 @@ export function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
           whiteSpace: "nowrap", overflow: "hidden",
           maxWidth: collapsed ? 0 : 160, opacity: collapsed ? 0 : 1,
           transition: "max-width .22s cubic-bezier(.4,0,.2,1), opacity .18s ease",
-        }}>agenvo</div>
+        }}>Agenvo</div>
         <span aria-hidden="true" style={{
           width: 9, height: 9, flex: "none", background: "var(--pop)", borderRadius: 3,
           marginLeft: "auto", opacity: collapsed ? 0 : 1, transition: "opacity .18s ease",

@@ -1,4 +1,4 @@
-"""Vercel serverless entrypoint for the agenvo assistant.
+"""Vercel serverless entrypoint for the Agenvo assistant.
 
 Same-origin production counterpart of chatbot/server.py: POST /api/assistant
 runs the LangGraph pipeline from chatbot/; GET returns a health payload.

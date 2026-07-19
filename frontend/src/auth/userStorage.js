@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-user, cloud-backed storage for agenvo.
+// Per-user, cloud-backed storage for Agenvo.
 //
 // The app talks to a tiny `window.storage` interface ({ get(key), set(key,value) }).
 // installUserStorage(uid) swaps that interface for a Firestore-backed one scoped to
