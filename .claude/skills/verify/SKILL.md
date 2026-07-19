@@ -9,7 +9,7 @@ description: How to verify Agenvo end-to-end — build, headless-drive the deplo
 
 - Frontend build: `cd frontend && npx vite build`; local serve: `npx vite preview` (port 5180, strictPort).
 - Full E2E: from `frontend/`, `cp ../.claude/skills/verify/e2e.cjs ./e2e-tmp.cjs && node e2e-tmp.cjs` (Node resolves `require("playwright")` from the script's own path, so it must sit inside `frontend/` where node_modules lives; playwright is a frontend dep, browsers already installed). Delete the copy afterwards.
-- Env vars: `BASE` (default https://agency-x-six.vercel.app — note `-six`, not agency-x), `SHOTS_DIR` for screenshots, `E2E_EMAIL` to vary the throwaway account.
+- Env vars: `BASE` (default https://agenvox.vercel.app; agency-x-six.vercel.app is the same project's legacy domain), `SHOTS_DIR` for screenshots, `E2E_EMAIL` to vary the throwaway account.
 
 ## Flow the script drives
 

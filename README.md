@@ -15,7 +15,7 @@ It runs in two flavours from the same codebase. In **service-agency mode** you h
 
 The part I had the most fun with is the built-in assistant. There's a floating chat window on every screen. Ask it "who's my top client?" or "how much was the agency cut on the 7th?" and it answers from your real numbers — not a guess, an actual figure computed in Python. Ask it where a feature lives and it walks you there. Ask it something it can't help with and it says so instead of making something up.
 
-**Live:** [agency-x-six.vercel.app](https://agency-x-six.vercel.app)
+**Live:** [agenvox.vercel.app](https://agenvox.vercel.app)
 
 ## What it does
 

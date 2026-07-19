@@ -3,7 +3,7 @@
 const { chromium } = require("playwright");
 const path = require("path");
 
-const BASE = process.env.BASE || "https://agency-x-six.vercel.app";
+const BASE = process.env.BASE || "https://agenvox.vercel.app";
 const SHOTS = process.env.SHOTS_DIR || ".";
 const EMAIL = process.env.E2E_EMAIL || "agenvo.e2e.20260719@example.com";
 const PASS = "Smoke-Test-2026!";
