@@ -1,4 +1,11 @@
-# Agenvo
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="frontend/public/brand/agenvo-white.png">
+  <img src="frontend/public/brand/agenvo-black.png" alt="Agenvo" width="320">
+</picture>
+
+**Every sale split, booked, and invoiced — your agency's numbers, handled.**
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)
@@ -9,11 +16,13 @@
 ![Claude](https://img.shields.io/badge/Claude-Haiku%20%2B%20Sonnet-D97757?logo=anthropic&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?logo=vercel&logoColor=white)
 
+</div>
+
 An income tracker for agencies. You log who paid you and who did the work, and it does the accounting — splitting every invoice into your agency fee and your team's pay, tracking it per client, per person, and per day, and rolling it all up into a dashboard. Sign in and your data is yours: it lives in your own Firestore document and nobody else can touch it.
 
 It runs in two flavours from the same codebase. In **service-agency mode** you have clients, team members, and sales. In **solo/brand mode** you have brands, expense categories, and entries. You pick one during onboarding and can rename the terms — what you call "Clients", "Team Members", or "Sales" — to whatever fits how you actually talk about your business.
 
-The part I had the most fun with is the built-in assistant. There's a floating chat window on every screen. Ask it "who's my top client?" or "how much was the agency cut on the 7th?" and it answers from your real numbers — not a guess, an actual figure computed in Python. Ask it where a feature lives and it walks you there. Ask it something it can't help with and it says so instead of making something up.
+The part I had the most fun with is the built-in assistant, **AgenMate**. There's a floating chat window on every screen. Ask it "who's my top client?" or "how much was the agency cut on the 7th?" and it answers from your real numbers — not a guess, an actual figure computed in Python. Ask it where a feature lives and it walks you there. Ask it something it can't help with and it says so instead of making something up.
 
 **Live:** [agenvox.vercel.app](https://agenvox.vercel.app)
 
@@ -23,7 +32,7 @@ The part I had the most fun with is the built-in assistant. There's a floating c
 - **Shows the whole picture on one dashboard** — revenue, earnings, and team pay over time, with per-client and per-team-member breakdown cards and daily/weekly/monthly charts.
 - **Builds invoices** from logged sales, ready to share or print, and keeps a full editable history of every record with CSV export.
 - **Keeps each account isolated.** Auth is Firebase; data is a single per-user Firestore document locked down so you can only ever read and write your own. There's no shared table anyone could wander into.
-- **Answers questions in plain English** through an in-app assistant that computes analytics deterministically and phrases them with Claude — grounded strictly in your data, so it never invents a number.
+- **Answers questions in plain English** through AgenMate, an in-app assistant that computes analytics deterministically and phrases them with Claude — grounded strictly in your data, so it never invents a number.
 - **Adapts to your business** with two agency modes and fully renameable terminology, plus light (Daylight) and dark (Midnight) themes.
 
 ## How the assistant is wired

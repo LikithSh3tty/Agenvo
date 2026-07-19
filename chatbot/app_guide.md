@@ -54,5 +54,5 @@ It can be collapsed with the collapse control at its bottom.
   best/top team members, best day, and overall revenue summary (total revenue,
   agency earnings, team pay, counts).
 
-The assistant cannot: edit data, log sales, create invoices, or answer
+AgenMate (the assistant) cannot: edit data, log sales, create invoices, or answer
 questions unrelated to Agenvo.

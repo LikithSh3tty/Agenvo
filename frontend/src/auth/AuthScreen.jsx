@@ -126,7 +126,7 @@ export default function AuthScreen() {
 
     .lx-head{ background:var(--ink); color:var(--card); padding:13px 18px; display:flex;
       align-items:center; justify-content:space-between; }
-    .lx-logo{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:23px; letter-spacing:-.03em; }
+    .lx-logo{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:23px; letter-spacing:-.03em; margin-right:auto; }
     .lx-mark{ width:15px; height:15px; background:var(--stamp); border-radius:1px; }
 
     .lx-body{ padding:20px 20px 22px; }
@@ -203,6 +203,7 @@ export default function AuthScreen() {
       <style>{css}</style>
       <div className="lx-card">
         <div className="lx-head">
+          <img src="/brand/mark-white.png" alt="" style={{ height: 22, marginRight: 10, flex: "none" }} />
           <span className="lx-logo">Agenvo</span>
           <span className="lx-mark" aria-hidden="true" />
         </div>

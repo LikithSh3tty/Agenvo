@@ -8,6 +8,28 @@ import { installUserStorage } from "./userStorage.js";
 // a pristine, non-persistent workspace via guest storage) → if nobody is signed in,
 // the login card drops in as an overlay on top of the main page.
 // The `key` on the wrapper remounts the app on login/logout so it re-reads storage.
+// Branded full-screen loader shown while auth resolves / cloud data hydrates.
+// Follows the OS color scheme since the user's saved theme isn't loaded yet.
+function Splash() {
+  return (
+    <div style={{
+      minHeight: "100vh", background: "var(--bg, #FAFAFA)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <style>{`
+        @keyframes agvSplash { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+        @media (prefers-color-scheme: dark) { .agv-splash-bg { background: #0E1011 !important; } }
+      `}</style>
+      <div className="agv-splash-bg" style={{ position: "fixed", inset: 0, background: "#FAFAFA", zIndex: -1 }} />
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcSet="/brand/mark-white.png" />
+        <img src="/brand/mark-black.png" alt="Agenvo" width="72"
+          style={{ animation: "agvSplash 1.6s ease-in-out infinite" }} />
+      </picture>
+    </div>
+  );
+}
+
 export default function AuthGate({ children }) {
   const { user, loading } = useAuth();
   const [storageReady, setStorageReady] = useState(false);
@@ -25,7 +47,7 @@ export default function AuthGate({ children }) {
     return () => { cancelled = true; if (uninstall) uninstall(); };
   }, [user?.uid]);
 
-  if (loading) return <div style={{ minHeight: "100vh", background: "var(--bg, #FAFAFA)" }} />;
+  if (loading) return <Splash />;
   if (!user) {
     return (
       <>
@@ -34,6 +56,6 @@ export default function AuthGate({ children }) {
       </>
     );
   }
-  if (!storageReady) return <div style={{ minHeight: "100vh", background: "var(--bg, #FAFAFA)" }} />;
+  if (!storageReady) return <Splash />;
   return <div key={user.uid}>{children}</div>;
 }

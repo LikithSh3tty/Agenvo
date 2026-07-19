@@ -728,6 +728,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
           --field-bg: ${TH.fieldBg};
           --field-border: ${TH.fieldBorder};
           --blur: ${TH.blur};
+          --logo-filter: ${TH.logoFilter};
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {

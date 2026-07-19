@@ -110,9 +110,13 @@ export function TabBar({ tabs: tabsProp, active, onChange, onSettings }) {
           fontSize: 17, fontWeight: 700, letterSpacing: -0.4, color: "var(--ink)",
           fontFamily: "'Space Grotesk',sans-serif",
           whiteSpace: "nowrap", overflow: "hidden",
+          display: "flex", alignItems: "center", gap: 8,
           maxWidth: collapsed ? 0 : 160, opacity: collapsed ? 0 : 1,
           transition: "max-width .22s cubic-bezier(.4,0,.2,1), opacity .18s ease",
-        }}>Agenvo</div>
+        }}>
+          <img src="/brand/mark-black.png" alt="" style={{ height: 18, flex: "none", filter: "var(--logo-filter, none)" }} />
+          Agenvo
+        </div>
         <span aria-hidden="true" style={{
           width: 9, height: 9, flex: "none", background: "var(--pop)", borderRadius: 3,
           marginLeft: "auto", opacity: collapsed ? 0 : 1, transition: "opacity .18s ease",

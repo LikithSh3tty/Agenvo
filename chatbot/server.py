@@ -14,7 +14,7 @@ from graph import run_chat
 
 HAS_KEY = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
-app = FastAPI(title="Agenvo assistant")
+app = FastAPI(title="AgenMate - Agenvo assistant")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -39,7 +39,7 @@ def health():
 def chat(req: ChatRequest):
     if not HAS_KEY:
         return {
-            "reply": "The assistant isn't configured yet - the server is missing an Anthropic API key.",
+            "reply": "AgenMate isn't configured yet - the server is missing an Anthropic API key.",
             "route": "error",
         }
     try:

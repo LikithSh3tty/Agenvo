@@ -48,7 +48,7 @@ class handler(BaseHTTPRequestHandler):
             return
         if not os.environ.get("ANTHROPIC_API_KEY"):
             self._send({
-                "reply": "The assistant isn't configured yet - the server is missing an Anthropic API key.",
+                "reply": "AgenMate isn't configured yet - the server is missing an Anthropic API key.",
                 "route": "error",
             })
             return

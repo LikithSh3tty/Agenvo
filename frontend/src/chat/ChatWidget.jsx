@@ -27,7 +27,7 @@ const SendIcon = () => (
   </svg>
 );
 
-const WELCOME = "Hi! Ask me how to use the app, or about your numbers - top clients, best team member, best day.";
+const WELCOME = "Hi, I'm AgenMate! Ask me how to use the app, or about your numbers - top clients, best team member, best day.";
 
 export default function ChatWidget({ data, config }) {
   const [open, setOpen] = useState(false);
@@ -124,7 +124,7 @@ export default function ChatWidget({ data, config }) {
       const json = await res.json();
       setMessages((m) => [...m, { role: "assistant", content: json.reply || "Sorry, something went wrong." }]);
     } catch {
-      setMessages((m) => [...m, { role: "assistant", content: "The assistant is offline right now. Start the chatbot server and try again." }]);
+      setMessages((m) => [...m, { role: "assistant", content: "AgenMate is offline right now. Start the chatbot server and try again." }]);
     }
     setBusy(false);
   };
@@ -162,7 +162,7 @@ export default function ChatWidget({ data, config }) {
             borderBottom: "1px solid var(--card-border)",
             cursor: "grab", touchAction: "none", userSelect: "none",
           }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif" }}>Assistant</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif" }}>AgenMate</div>
             <button onClick={() => setOpen(false)} onPointerDown={(e) => e.stopPropagation()} aria-label="Close assistant" style={{
               background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)",
               display: "grid", placeItems: "center", padding: 4,

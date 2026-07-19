@@ -33,6 +33,7 @@ export const THEME = {
   fieldBorder: "rgba(var(--ink-rgb),0.08)",
   scrim: "rgba(var(--ink-rgb),0.22)", // modal backdrop — stays dark in both modes
   blur: "blur(16px)",
+  logoFilter: "none", // brand mark is black; inverted to white in dark mode
 };
 
 // Dark counterpart. Same keys as THEME so the CSS-variable block can swap wholesale.
@@ -67,6 +68,7 @@ export const DARK = {
   fieldBorder: "rgba(255,255,255,0.13)",
   scrim: "rgba(0,0,0,0.55)",
   blur: "blur(16px)",
+  logoFilter: "invert(1)",
 };
 
 export const C = {
