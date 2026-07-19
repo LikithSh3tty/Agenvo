@@ -154,7 +154,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   };
   const TH = dark ? DARK : THEME;
 
-  // Live cross-device sync: userStorage pushes a "agencyx:remote" event when this
+  // Live cross-device sync: userStorage pushes a "agenvo:remote" event when this
   // user's data changes on another device. Apply it to the running app.
   useEffect(() => {
     const onRemote = (e) => {
@@ -181,8 +181,8 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         setDark(value === "dark");
       }
     };
-    window.addEventListener("agencyx:remote", onRemote);
-    return () => window.removeEventListener("agencyx:remote", onRemote);
+    window.addEventListener("agenvo:remote", onRemote);
+    return () => window.removeEventListener("agenvo:remote", onRemote);
   }, []);
 
   // Upsert a tracked invoice by its number (shared by service + management invoice views).
@@ -472,10 +472,10 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   };
 
   const exportBackup = () => {
-    const payload = JSON.stringify({ _app: "agencyx-tracker", _version: 5, _exportedAt: new Date().toISOString(), ...data }, null, 2);
+    const payload = JSON.stringify({ _app: "agenvo-tracker", _version: 5, _exportedAt: new Date().toISOString(), ...data }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const slug = (config.business.name || "agencyx").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agencyx";
+    const slug = (config.business.name || "agenvo").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agenvo";
     const a = document.createElement("a"); a.href = url; a.download = `${slug}-backup-${today()}.json`; a.click();
     URL.revokeObjectURL(url);
   };
@@ -531,9 +531,9 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   // Dashboard display currency: totals & charts are re-denominated into this
   // (defaults to base; remembered per device). Falls back to base if the saved
   // pick is no longer an enabled currency.
-  const [dashCurRaw, setDashCurRaw] = useState(() => { try { return localStorage.getItem("agencyx_dash_currency") || ""; } catch { return ""; } });
+  const [dashCurRaw, setDashCurRaw] = useState(() => { try { return localStorage.getItem("agenvo_dash_currency") || ""; } catch { return ""; } });
   const dispCode = currencyReg.map[dashCurRaw.toUpperCase()] ? dashCurRaw.toUpperCase() : baseCode();
-  const setDashCur = (c) => { setDashCurRaw(c); try { localStorage.setItem("agencyx_dash_currency", c); } catch {} };
+  const setDashCur = (c) => { setDashCurRaw(c); try { localStorage.setItem("agenvo_dash_currency", c); } catch {} };
   const dispRate = curInfo(dispCode).rate || 1;
   const inDisp = (v) => money(v / dispRate); // base → display currency
   const totalSales = sumMoney(dashRecs, (r) => toBase(r.amount, r.currency));

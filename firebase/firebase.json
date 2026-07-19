@@ -9,7 +9,7 @@
     "providers": {
       "emailPassword": true,
       "googleSignIn": {
-        "oAuthBrandDisplayName": "agencyx",
+        "oAuthBrandDisplayName": "agenvo",
         "supportEmail": "likithshetty188@gmail.com"
       }
     }

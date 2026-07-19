@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./AuthContext.jsx";
 
 // ── "Ledger card" auth overlay ───────────────────────────────────────────────
-// agencyx is an agency revenue & commission ledger, so the sign-in is an
+// agenvo is an agency revenue & commission ledger, so the sign-in is an
 // accounting artifact: a hard-edged form block with a rubber-stamp CTA. It
 // renders as an overlay on top of the app shell — the main page paints first,
 // then the card drops in over a dimmed, blurred backdrop.
@@ -16,7 +16,7 @@ const DARK = {
   field: "#14181A", sub: "#9AA29A", stamp: "#EDF973", onStamp: "#161900", err: "#F0815F",
 };
 
-const THEME_KEY = "agencyx-theme"; // shared with the app
+const THEME_KEY = "agenvo-theme"; // shared with the app
 
 function useTheme() {
   const [dark, setDark] = useState(false);
@@ -199,11 +199,11 @@ export default function AuthScreen() {
   if (!showCard) return null;
 
   return (
-    <div className="lx" role="dialog" aria-modal="true" aria-label="Sign in to agencyx">
+    <div className="lx" role="dialog" aria-modal="true" aria-label="Sign in to agenvo">
       <style>{css}</style>
       <div className="lx-card">
         <div className="lx-head">
-          <span className="lx-logo">agencyx</span>
+          <span className="lx-logo">agenvo</span>
           <span className="lx-mark" aria-hidden="true" />
         </div>
 
@@ -268,7 +268,7 @@ export default function AuthScreen() {
           <div className="lx-foot">
             {isSignup
               ? <>Already keeping books? <button type="button" onClick={() => switchMode("login")}>Log in</button></>
-              : <>New to agencyx? <button type="button" onClick={() => switchMode("signup")}>Create one</button></>}
+              : <>New to agenvo? <button type="button" onClick={() => switchMode("signup")}>Create one</button></>}
           </div>
         </div>
       </div>

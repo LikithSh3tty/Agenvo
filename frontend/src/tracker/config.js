@@ -8,7 +8,7 @@ export const CHATTER_CUT = 0.125;
    so adding this changes nothing visible. Later steps make the UI read from it. ── */
 export const defaultConfig = {
   business: {
-    name: "AgencyX",
+    name: "Agenvo",
     tagline: "Agency Dashboard",
     logo: "",
     address: [],
@@ -163,7 +163,7 @@ export const mergeConfig = (saved) => {
   }
   if (base.business.country === "India") base.business.country = "";
   if (base.business.logo === "/logo.svg") base.business.logo = "";
-  if (base.business.name === "Fanlink Chatting") base.business.name = "AgencyX";
+  if (base.business.name === "Fanlink Chatting") base.business.name = "Agenvo";
   if (base.business.tagline === "Chatting Agency") base.business.tagline = "Agency Dashboard";
   return base;
 };

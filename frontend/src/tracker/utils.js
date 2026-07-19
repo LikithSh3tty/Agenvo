@@ -1,7 +1,7 @@
 
 
 export const STORAGE_KEY = "fanlink-tracker-v4";
-export const THEME_KEY = "agencyx-theme"; // "light" | "dark"; falls back to OS preference
+export const THEME_KEY = "agenvo-theme"; // "light" | "dark"; falls back to OS preference
 export const defaultState = { clients: [], chatters: [], records: [], brands: [], entries: [], invoices: [] };
 
 export const genId = () =>

@@ -21,14 +21,14 @@ METRICS = {"top_clients", "top_team_members", "best_day", "revenue_summary", "li
 
 APP_GUIDE = (Path(__file__).parent / "app_guide.md").read_text(encoding="utf-8")
 
-ROUTER_SYSTEM = """You route messages for the agencyx assistant. agencyx is an
+ROUTER_SYSTEM = """You route messages for the agenvo assistant. agenvo is an
 agency income tracker (clients, team members, sales, invoices).
 
 Classify the user's latest message, using the conversation for context, and
 reply with ONLY a JSON object, no other text:
 {"route": "navigation" | "analytics" | "clarify", "metric": <string or null>}
 
-- "navigation": how to use or find something in the agencyx app.
+- "navigation": how to use or find something in the agenvo app.
 - "analytics": a question about the user's own business numbers. Also set
   "metric" to exactly one of:
     "top_clients"      - best/top clients, client rankings, second top client
@@ -39,7 +39,7 @@ reply with ONLY a JSON object, no other text:
     "list_clients"     - list/show/name all their clients
     "list_team_members" - list/show/name all their team members or chatters
     "revenue_summary"  - overall totals, earnings, team pay, counts, everything else
-- "clarify": greetings, ambiguous messages, or anything unrelated to agencyx.
+- "clarify": greetings, ambiguous messages, or anything unrelated to agenvo.
 
 Follow-ups like "and the second one?" keep the route/metric of the question
 they follow."""
@@ -74,7 +74,7 @@ next at 900.00." Not the stiff "Your top client is Acme, with a total of
 1,250.00 USD from 4 sales logged so far."
 """
 
-ANALYTICS_SYSTEM = """You are the agencyx assistant. Answer the user's question
+ANALYTICS_SYSTEM = """You are the agenvo assistant. Answer the user's question
 using ONLY the numbers in the FACTS block below. Rules:
 - Never invent, estimate, or extrapolate a number. If the FACTS don't contain
   what's asked, say you don't have that data.
@@ -91,8 +91,8 @@ using ONLY the numbers in the FACTS block below. Rules:
 FACTS:
 {facts}"""
 
-NAVIGATION_SYSTEM = """You are the agencyx assistant. Answer the user's
-question about using the agencyx app using ONLY the app guide below. If the
+NAVIGATION_SYSTEM = """You are the agenvo assistant. Answer the user's
+question about using the agenvo app using ONLY the app guide below. If the
 guide doesn't cover the question, say so honestly and mention what you can
 help with. Never invent screens, buttons, or features not in the guide.
 Answer like you'd tell a colleague where something is - just the part they
@@ -103,7 +103,7 @@ asked about, in a sentence or two.
 APP GUIDE:
 {guide}"""
 
-CLARIFY_SYSTEM = """You are the agencyx assistant, an in-app helper for an
+CLARIFY_SYSTEM = """You are the agenvo assistant, an in-app helper for an
 agency income tracker. The user's message is a greeting, ambiguous, or outside
 what you cover.
 

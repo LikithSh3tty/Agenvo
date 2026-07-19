@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-user, cloud-backed storage for agencyx.
+// Per-user, cloud-backed storage for agenvo.
 //
 // The app talks to a tiny `window.storage` interface ({ get(key), set(key,value) }).
 // installUserStorage(uid) swaps that interface for a Firestore-backed one scoped to
@@ -7,14 +7,14 @@
 // follows them across devices.
 //
 // IMPORTANT: localStorage is shared by every account on a browser, so the offline
-// cache is namespaced per-uid (`agencyx:{uid}:{key}`). One account can never read
+// cache is namespaced per-uid (`agenvo:{uid}:{key}`). One account can never read
 // another's cached data, even after signing out on the same device.
 // ─────────────────────────────────────────────────────────────────────────────
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase.js";
 
 const STORAGE_KEY = "fanlink-tracker-v4"; // workspace data blob
-const THEME_KEY = "agencyx-theme";        // light/dark preference
+const THEME_KEY = "agenvo-theme";        // light/dark preference
 const KEYS = [STORAGE_KEY, THEME_KEY];
 const LEGACY_CLAIMED = "agencyx:legacy-claimed"; // one-time guard for pre-Firebase data
 
@@ -28,7 +28,7 @@ export async function installUserStorage(uid) {
   // Per-user cache key. Theme stays on the shared key (benign — it only lets the
   // login screen show the last-used theme); workspace data is namespaced per uid so
   // a different account on the same device never sees stale data.
-  const localKey = (key) => (key === THEME_KEY ? key : `agencyx:${uid}:${key}`);
+  const localKey = (key) => (key === THEME_KEY ? key : `agenvo:${uid}:${key}`);
 
   const cache = {};         // key -> string value, hydrated before the app reads
   const lastWritten = {};   // dedupe the live listener against this tab's own writes
@@ -71,7 +71,7 @@ export async function installUserStorage(uid) {
       if (incoming === lastWritten[key] || incoming === cache[key]) continue; // unchanged / our echo
       cache[key] = incoming;
       lsSet(localKey(key), incoming);
-      try { window.dispatchEvent(new CustomEvent("agencyx:remote", { detail: { key, value: incoming } })); } catch { /* ignore */ }
+      try { window.dispatchEvent(new CustomEvent("agenvo:remote", { detail: { key, value: incoming } })); } catch { /* ignore */ }
     }
   });
 

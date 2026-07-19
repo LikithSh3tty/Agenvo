@@ -1,4 +1,4 @@
-"""Deterministic metrics over the agencyx data snapshot.
+"""Deterministic metrics over the agenvo data snapshot.
 
 All money math happens here in Python; the LLM only phrases the results.
 Amounts convert to the workspace base currency using the per-code rates the

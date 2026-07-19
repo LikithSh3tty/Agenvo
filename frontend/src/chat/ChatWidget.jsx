@@ -41,7 +41,7 @@ export default function ChatWidget({ data, config }) {
   // keeps opening upward from the launcher; null = the default resting spot.
   const [pos, setPos] = useState(() => {
     try {
-      const p = JSON.parse(localStorage.getItem("agencyx-chat-pos"));
+      const p = JSON.parse(localStorage.getItem("agenvo-chat-pos"));
       if (p && Number.isFinite(p.right) && Number.isFinite(p.bottom)) return p;
     } catch { /* ignore */ }
     return null;
@@ -78,7 +78,7 @@ export default function ChatWidget({ data, config }) {
       window.removeEventListener("pointerup", onUp);
       draggedRef.current = moved;
       if (moved && last) {
-        try { localStorage.setItem("agencyx-chat-pos", JSON.stringify(last)); } catch { /* ignore */ }
+        try { localStorage.setItem("agenvo-chat-pos", JSON.stringify(last)); } catch { /* ignore */ }
       }
     };
     window.addEventListener("pointermove", onMove);

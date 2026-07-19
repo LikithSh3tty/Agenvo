@@ -1,6 +1,6 @@
-# agencyx App Guide
+# agenvo App Guide
 
-agencyx is an agency income tracker. Data is saved automatically per signed-in
+agenvo is an agency income tracker. Data is saved automatically per signed-in
 account. Depending on setup, the workspace runs in **service agency** mode
 (clients + team members + sales) or **solo/brand** mode (brands + expense
 categories + entries). Tab names below use the default terms; the user can
@@ -55,4 +55,4 @@ It can be collapsed with the collapse control at its bottom.
   agency earnings, team pay, counts).
 
 The assistant cannot: edit data, log sales, create invoices, or answer
-questions unrelated to agencyx.
+questions unrelated to agenvo.
