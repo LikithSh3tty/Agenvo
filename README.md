@@ -5,7 +5,7 @@
   <img src="frontend/public/brand/agenvo-black.png" alt="Agenvo" width="320">
 </picture>
 
-**Every sale split, booked, and invoiced — your agency's numbers, handled.**
+**Every sale split, booked, and invoiced. Your agency's numbers, handled.**
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)
@@ -18,26 +18,26 @@
 
 </div>
 
-An income tracker for agencies. You log who paid you and who did the work, and it does the accounting — splitting every invoice into your agency fee and your team's pay, tracking it per client, per person, and per day, and rolling it all up into a dashboard. Sign in and your data is yours: it lives in your own Firestore document and nobody else can touch it.
+An income tracker for agencies. You log who paid you and who did the work, and it does the accounting: splitting every invoice into your agency fee and your team's pay, tracking it per client, per person, and per day, and rolling it all up into a dashboard. Sign in and your data is yours: it lives in your own Firestore document and nobody else can touch it.
 
-It runs in two flavours from the same codebase. In **service-agency mode** you have clients, team members, and sales. In **solo/brand mode** you have brands, expense categories, and entries. You pick one during onboarding and can rename the terms — what you call "Clients", "Team Members", or "Sales" — to whatever fits how you actually talk about your business.
+It runs in two flavours from the same codebase. In **service-agency mode** you have clients, team members, and sales. In **solo/brand mode** you have brands, expense categories, and entries. You pick one during onboarding and can rename the terms (what you call "Clients", "Team Members", or "Sales") to whatever fits how you actually talk about your business.
 
-The part I had the most fun with is the built-in assistant, **AgenMate**. There's a floating chat window on every screen. Ask it "who's my top client?" or "how much was the agency cut on the 7th?" and it answers from your real numbers — not a guess, an actual figure computed in Python. Ask it where a feature lives and it walks you there. Ask it something it can't help with and it says so instead of making something up.
+The part I had the most fun with is the built-in assistant, **AgenMate**. There's a floating chat window on every screen. Ask it "who's my top client?" or "how much was the agency cut on the 7th?" and it answers from your real numbers. Not a guess, an actual figure computed in Python. Ask it where a feature lives and it walks you there. Ask it something it can't help with and it says so instead of making something up.
 
 **Live:** [agenvox.vercel.app](https://agenvox.vercel.app)
 
 ## What it does
 
 - **Splits every sale automatically** into the agency fee and the team payout, using per-client commission rules you set once. Handles multiple currencies with live exchange rates, so a client who pays in EUR still rolls into your USD totals correctly.
-- **Shows the whole picture on one dashboard** — revenue, earnings, and team pay over time, with per-client and per-team-member breakdown cards and daily/weekly/monthly charts.
+- **Shows the whole picture on one dashboard** with revenue, earnings, and team pay over time, plus per-client and per-team-member breakdown cards and daily/weekly/monthly charts.
 - **Builds invoices** from logged sales, ready to share or print, and keeps a full editable history of every record with CSV export.
 - **Keeps each account isolated.** Auth is Firebase; data is a single per-user Firestore document locked down so you can only ever read and write your own. There's no shared table anyone could wander into.
-- **Answers questions in plain English** through AgenMate, an in-app assistant that computes analytics deterministically and phrases them with Claude — grounded strictly in your data, so it never invents a number.
+- **Answers questions in plain English** through AgenMate, an in-app assistant that computes analytics deterministically and phrases them with Claude, grounded strictly in your data, so it never invents a number.
 - **Adapts to your business** with two agency modes and fully renameable terminology, plus light (Daylight) and dark (Midnight) themes.
 
 ## How the assistant is wired
 
-The chat backend is a LangGraph `StateGraph`. A message comes in, a fast model routes it, and then one of three nodes handles it. The trick that keeps it honest: **every number is calculated in Python first**, and the language model only ever phrases facts it's handed — it's never asked to do the math or recall the data itself.
+The chat backend is a LangGraph `StateGraph`. A message comes in, a fast model routes it, and then one of three nodes handles it. The trick that keeps it honest: **every number is calculated in Python first**, and the language model only ever phrases facts it's handed. It's never asked to do the math or recall the data itself.
 
 ```
                       message
@@ -53,14 +53,14 @@ The chat backend is a LangGraph `StateGraph`. A message comes in, a fast model r
    └──────┬─────┘  └──────┬─────┘  └────┬─────┘
           │               │             │
   numbers computed in     answered      "that's outside what
-  Python; Sonnet just     only from     I cover — did you
+  Python; Sonnet just     only from     I cover. Did you
   phrases the facts       app_guide.md  mean ...?"
           └───────────────┴─────────────┘
                           ▼
                         reply
 ```
 
-- **Router** (Haiku) classifies the message as an analytics question, a navigation question, or out-of-scope — and for analytics, which metric it needs (top clients, best day, revenue by date, and so on).
+- **Router** (Haiku) classifies the message as an analytics question, a navigation question, or out-of-scope, and for analytics it picks which metric it needs (top clients, best day, revenue by date, and so on).
 - **Analytics** computes the exact figures from the data snapshot in `analytics.py`, then Claude Sonnet turns those figures into a natural sentence. If the data's empty, it says so rather than inventing anything.
 - **Navigation** answers only from a hand-written app guide, so it can't hallucinate a feature that doesn't exist.
 - **Clarify** catches greetings and anything off-topic and steers the conversation back.
@@ -73,7 +73,7 @@ The frontend sends a snapshot of your (already-loaded) data with each message, s
 agency/
 ├── frontend/
 │   ├── src/
-│   │   ├── tracker/          # the app, split by concern — App.jsx plus currency,
+│   │   ├── tracker/          # the app, split by concern: App.jsx plus currency,
 │   │   │                     #   config, theme, ui, charts, nav, invoice, settings,
 │   │   │                     #   onboarding, management modules
 │   │   ├── auth/             # Firebase auth + per-user Firestore storage
@@ -90,7 +90,7 @@ agency/
 │   ├── requirements.txt
 │   └── test_*.py             # unit tests for the analytics + router
 ├── backend/api/
-│   ├── assistant.py          # Vercel Python function — /api/assistant (prod)
+│   ├── assistant.py          # Vercel Python function at /api/assistant (prod)
 │   ├── rates.js              # same-origin FX-rate proxy (Node)
 │   └── requirements.txt
 ├── firebase/                 # Firestore rules + indexes
@@ -133,7 +133,7 @@ Then start the API:
 uvicorn server:app --port 8000
 ```
 
-The chat widget will find it automatically. Without a key the widget still shows up — it just tells you the assistant isn't configured instead of guessing. The analytics tests run without a key at all:
+The chat widget will find it automatically. Without a key the widget still shows up. It just tells you the assistant isn't configured instead of guessing. The analytics tests run without a key at all:
 
 ```bash
 python -m pytest -v
@@ -151,7 +151,7 @@ python -m pytest -v
 }
 ```
 
-`history` is the running conversation (`{ "role": "user" | "assistant", "content": "..." }`), and `snapshot` is your data — the backend is stateless and holds nothing of its own. Response:
+`history` is the running conversation (`{ "role": "user" | "assistant", "content": "..." }`), and `snapshot` is your data. The backend is stateless and holds nothing of its own. Response:
 
 ```json
 {
@@ -164,11 +164,11 @@ python -m pytest -v
 
 ## A note on security
 
-Because the assistant endpoint is public (browsers call it directly), it's hardened against abuse: request bodies are capped before they're read, message and history lengths are bounded, and list outputs are limited — so nobody can run up the API bill or exhaust memory with a giant payload. On the data side, Firestore rules enforce strict per-user isolation with a default-deny on everything else, all invoice/print output is HTML-escaped, and the FX proxy sanitizes its input. The assistant can only ever see the data the signed-in user sends, and every figure it reports is computed server-side rather than pulled from the model.
+Because the assistant endpoint is public (browsers call it directly), it's hardened against abuse: request bodies are capped before they're read, message and history lengths are bounded, and list outputs are limited, so nobody can run up the API bill or exhaust memory with a giant payload. On the data side, Firestore rules enforce strict per-user isolation with a default-deny on everything else, all invoice/print output is HTML-escaped, and the FX proxy sanitizes its input. The assistant can only ever see the data the signed-in user sends, and every figure it reports is computed server-side rather than pulled from the model.
 
 ## Deployment
 
-`vercel.json` builds the frontend as a static site and runs two serverless functions — the Node FX proxy and the Python assistant — with `/api/*` routed to the backend and everything else falling through to the SPA. Add `ANTHROPIC_API_KEY` (and any `VITE_FIREBASE_*` overrides) in the Vercel project settings and push; the assistant appears automatically once the key is set.
+`vercel.json` builds the frontend as a static site and runs two serverless functions (the Node FX proxy and the Python assistant) with `/api/*` routed to the backend and everything else falling through to the SPA. Add `ANTHROPIC_API_KEY` (and any `VITE_FIREBASE_*` overrides) in the Vercel project settings and push; the assistant appears automatically once the key is set.
 
 ## Things I'd add next
 
