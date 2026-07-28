@@ -928,12 +928,16 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         @keyframes brutalPulse { 0%,100%{border-color:#111 !important} 50%{border-color:var(--pop) !important} }
         .brutal-check { position: relative; display: inline-block; cursor: pointer; width: 1.5em; height: 1.5em; flex: none; line-height: 0; }
         .brutal-check input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-        .brutal-check .bmk { position: absolute; inset: 0; background: #fff; border: 0.16em solid #111; border-radius: 8% 92% 12% 88% / 87% 11% 89% 13%; box-shadow: 0.22em 0.22em 0 #111; transition: transform .2s cubic-bezier(0.175,0.885,0.32,1.275), box-shadow .2s ease, background .2s ease, border-radius .2s ease; }
+        /* Colours track the theme. Hardcoded #fff/#111 made the unchecked box a
+           featureless white blob in dark mode: its border and shadow vanished
+           against the card, so nothing read as an empty tickbox. */
+        .brutal-check .bmk { position: absolute; inset: 0; background: var(--surface); border: 0.16em solid var(--ink); border-radius: 8% 92% 12% 88% / 87% 11% 89% 13%; box-shadow: 0.22em 0.22em 0 rgba(var(--ink-rgb),0.45); transition: transform .2s cubic-bezier(0.175,0.885,0.32,1.275), box-shadow .2s ease, background .2s ease, border-radius .2s ease; }
         .brutal-check:hover .bmk { transform: scale(1.05) rotate(2deg); }
-        .brutal-check input:checked ~ .bmk { background: var(--pop); border-radius: 92% 8% 88% 12% / 11% 87% 13% 89%; transform: scale(1.1) rotate(-2deg); }
-        .brutal-check .bmk::after { content: ""; position: absolute; display: none; left: 50%; top: 45%; width: 0.28em; height: 0.6em; border: solid #111; border-width: 0 0.22em 0.22em 0; transform: translate(-50%,-50%) rotate(45deg); }
+        .brutal-check input:checked ~ .bmk { background: var(--pop); border-color: var(--pop); border-radius: 92% 8% 88% 12% / 11% 87% 13% 89%; transform: scale(1.1) rotate(-2deg); }
+        .brutal-check input:focus-visible ~ .bmk { outline: 2px solid var(--pop); outline-offset: 3px; }
+        .brutal-check .bmk::after { content: ""; position: absolute; display: none; left: 50%; top: 45%; width: 0.28em; height: 0.6em; border: solid var(--pop-fg); border-width: 0 0.22em 0.22em 0; transform: translate(-50%,-50%) rotate(45deg); }
         .brutal-check input:checked ~ .bmk::after { display: block; animation: brutalSplash .3s forwards; }
-        .brutal-check:active .bmk { transform: scale(0.9) translateY(0.18em); box-shadow: 0 0 0 #111; }
+        .brutal-check:active .bmk { transform: scale(0.9) translateY(0.18em); box-shadow: 0 0 0 rgba(var(--ink-rgb),0.45); }
         @keyframes brutalSplash { 0%{transform:translate(-50%,-50%) scale(0) rotate(45deg);opacity:0} 70%{transform:translate(-50%,-50%) scale(1.2) rotate(45deg)} 100%{transform:translate(-50%,-50%) scale(1) rotate(45deg);opacity:1} }
         .coin-loader { height: 110px; aspect-ratio: 1; position: relative; }
         .coin-loader::before, .coin-loader::after { content: ""; position: absolute; inset: 0; border-radius: 50%; transform-origin: bottom; }
@@ -1119,6 +1123,12 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                           )}
                         </div>
                       </div>
+                      {cl.blocks.length > 1 && clubbedFor(cl).length < 2 && (
+                        <div style={{ fontSize: 11.5, color: C.textMuted, margin: "2px 0 2px 2px" }}>
+                          Tick two or more days to bill them on one invoice.
+                        </div>
+                      )}
+
                       {(() => {
                         const picked = clubbedFor(cl);
                         return picked.length > 1 && (
