@@ -77,7 +77,7 @@ export function InsightsPanel({ highlights = [], delay = 0 }) {
 }
 
 // Shared invoice-status tracker (Draft / Sent / Paid / Overdue). Reads/writes data.invoices.
-export function InvoicesPanel({ invoices = [], onUpsert, delay = 0 }) {
+export function InvoicesPanel({ invoices = [], onUpsert, onOpen, onDelete, delay = 0 }) {
   const list = Array.isArray(invoices) ? invoices : [];
   const isOverdue = (inv) => inv.status === "sent" && inv.dueDate && inv.dueDate < today();
   const effStatus = (inv) => (inv.status === "paid" ? "paid" : isOverdue(inv) ? "overdue" : (inv.status || "draft"));
@@ -95,9 +95,9 @@ export function InvoicesPanel({ invoices = [], onUpsert, delay = 0 }) {
   const sorted = [...list].sort((a, b) => ((a.issueDate || "") < (b.issueDate || "") ? 1 : -1));
 
   if (!list.length) {
-    return <EmptyState icon="file-text" text="No invoices tracked yet" sub="Open an invoice and pick a status to start tracking it here" />;
+    return <EmptyState icon="file-text" text="No invoices yet" sub="Invoice a day block from the dashboard. Every invoice you download or email is filed here." />;
   }
-  const cols = "1.1fr 1fr 0.9fr 0.8fr 0.8fr 92px";
+  const cols = "1.1fr 1.15fr 0.9fr 0.8fr 0.8fr 92px 64px";
   return (
     <div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 22 }}>
@@ -106,15 +106,20 @@ export function InvoicesPanel({ invoices = [], onUpsert, delay = 0 }) {
         <StatCard label="Paid" amount={paidAmt} />
       </div>
       <div className="mobile-scroll-x" style={{ borderRadius: 14, overflow: "hidden", border: "1px solid " + C.cardBorder }}>
-        <div style={{ display: "grid", gridTemplateColumns: cols, minWidth: 640, padding: "10px 18px", background: "rgba(var(--accent-rgb),0.015)", fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.7, textTransform: "uppercase", gap: 6 }}>
-          <div>Invoice</div><div>Client</div><div>Amount</div><div>Issued</div><div>Due</div><div>Status</div>
+        <div style={{ display: "grid", gridTemplateColumns: cols, minWidth: 700, padding: "10px 18px", background: "rgba(var(--accent-rgb),0.015)", fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: 0.7, textTransform: "uppercase", gap: 6 }}>
+          <div>Invoice</div><div>Client</div><div>Amount</div><div>Issued</div><div>Due</div><div>Status</div><div>Actions</div>
         </div>
         {sorted.map((inv) => {
           const st = effStatus(inv); const m = META[st];
           return (
-            <div key={inv.number} className="recrow" style={{ display: "grid", gridTemplateColumns: cols, minWidth: 640, padding: "12px 18px", borderTop: "1px solid rgba(var(--accent-rgb),0.03)", fontSize: 13, alignItems: "center", gap: 6 }}>
+            <div key={inv.id || inv.number} className="recrow" style={{ display: "grid", gridTemplateColumns: cols, minWidth: 700, padding: "12px 18px", borderTop: "1px solid rgba(var(--accent-rgb),0.03)", fontSize: 13, alignItems: "center", gap: 6 }}>
               <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, color: C.textDim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.number}</div>
-              <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.clientName}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.clientName}</div>
+                {inv.periodLabel && (
+                  <div style={{ fontSize: 10.5, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inv.periodLabel}</div>
+                )}
+              </div>
               <div style={{ fontWeight: 700, color: C.accent }}>{fmtIn(inv.amount, inv.currency)}</div>
               <div style={{ color: C.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{inv.issueDate ? shortDate(inv.issueDate) : "—"}</div>
               <div style={{ color: isOverdue(inv) ? "#ef4444" : C.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{inv.dueDate ? shortDate(inv.dueDate) : "—"}</div>
@@ -122,6 +127,18 @@ export function InvoicesPanel({ invoices = [], onUpsert, delay = 0 }) {
                 <button onClick={() => onUpsert({ ...inv, status: nextStatus[st] })} title="Click to change status" style={{
                   padding: "4px 11px", borderRadius: 99, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, background: m.bg, color: m.color,
                 }}>{m.label}</button>
+              </div>
+              <div style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
+                {onOpen && (
+                  <button onClick={() => onOpen(inv)} aria-label={"Open invoice " + inv.number} title="View / download again" style={{
+                    background: "none", border: "none", color: "rgba(var(--ink-rgb),0.35)", cursor: "pointer", padding: 3, borderRadius: 5,
+                  }}><Icon name="file-text" size={13} /></button>
+                )}
+                {onDelete && (
+                  <button onClick={() => onDelete(inv)} aria-label={"Delete invoice " + inv.number} title="Delete" style={{
+                    background: "none", border: "none", color: "rgba(239,68,68,0.45)", cursor: "pointer", padding: 3, borderRadius: 5,
+                  }}><Icon name="x" size={14} /></button>
+                )}
               </div>
             </div>
           );
@@ -335,12 +352,27 @@ export function ManagementApp({ data, persist, config, onSettings, onInvoice, on
   ];
 
   const NAV = ["Dashboard", "Add Entry", "Brands", "Categories", "Invoices", "History"];
+  // Matched on id, not number: number-keyed upserts overwrote earlier invoices
+  // whenever two numbers collided. The number branch is legacy-only.
   const upsertInvoice = (inv) => {
     const ilist = Array.isArray(data.invoices) ? data.invoices : [];
-    const idx = ilist.findIndex((x) => x.number === inv.number);
-    const next = idx >= 0 ? ilist.map((x, i) => (i === idx ? { ...x, ...inv } : x)) : [...ilist, { id: genId(), ...inv }];
+    const idx = inv.id
+      ? ilist.findIndex((x) => x.id === inv.id)
+      : ilist.findIndex((x) => !x.id && x.number === inv.number);
+    const next = idx >= 0
+      ? ilist.map((x, i) => (i === idx ? { ...x, ...inv } : x))
+      : [...ilist, { createdAt: new Date().toISOString(), ...inv, id: inv.id || genId() }];
     persist({ ...data, invoices: next });
   };
+  const deleteInvoice = (inv) => persist({
+    ...data,
+    invoices: (Array.isArray(data.invoices) ? data.invoices : []).filter((x) => (x.id || x.number) !== (inv.id || inv.number)),
+  });
+  const openStoredInvoice = (inv) => onInvoice?.({
+    record: { id: inv.id, date: inv.issueDate, amount: inv.amount, currency: inv.currency },
+    client: { id: inv.clientId || "", name: inv.clientName || "Client" },
+    existing: inv,
+  });
 
   return (
     <div>
@@ -596,7 +628,7 @@ export function ManagementApp({ data, persist, config, onSettings, onInvoice, on
       {tab === "Invoices" && (
         <div>
           <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 20 }}>Invoices</h2>
-          <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} />
+          <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} onOpen={openStoredInvoice} onDelete={deleteInvoice} />
         </div>
       )}
 

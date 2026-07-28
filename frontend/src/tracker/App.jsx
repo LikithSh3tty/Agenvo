@@ -78,6 +78,9 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   const [editDate, setEditDate] = useState("");
   const [lastDeleted, setLastDeleted] = useState(null);
 
+  // Day blocks ticked to be clubbed onto one invoice ("clientId|YYYY-MM-DD" keys).
+  const [clubbed, setClubbed] = useState([]);
+
   // Filters
   const [dashFilterDate, setDashFilterDate] = useState("all");
   const [filterClient, setFilterClient] = useState("all");
@@ -105,6 +108,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         brands: d?.brands ?? prev.brands,
         entries: d?.entries ?? prev.entries,
         invoices: d?.invoices ?? prev.invoices,
+        hiddenBlocks: d?.hiddenBlocks ?? prev.hiddenBlocks ?? [],
         config: mergeConfig(d?.config),
       }));
       setLoading(false);
@@ -185,13 +189,35 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     return () => window.removeEventListener("agenvo:remote", onRemote);
   }, []);
 
-  // Upsert a tracked invoice by its number (shared by service + management invoice views).
+  // Upsert a tracked invoice (shared by service + management invoice views).
+  // Matched on id, never on number: numbers used to collide, so a number-keyed
+  // upsert silently overwrote the earlier invoice instead of filing a new one.
+  // The number branch only covers rows saved before invoices carried an id.
   const upsertInvoice = (inv) => {
     const list = Array.isArray(data.invoices) ? data.invoices : [];
-    const idx = list.findIndex((x) => x.number === inv.number);
-    const next = idx >= 0 ? list.map((x, i) => (i === idx ? { ...x, ...inv } : x)) : [...list, { id: genId(), ...inv }];
+    const idx = inv.id
+      ? list.findIndex((x) => x.id === inv.id)
+      : list.findIndex((x) => !x.id && x.number === inv.number);
+    const next = idx >= 0
+      ? list.map((x, i) => (i === idx ? { ...x, ...inv } : x))
+      : [...list, { createdAt: new Date().toISOString(), ...inv, id: inv.id || genId() }];
     persist({ ...data, invoices: next });
   };
+
+  const deleteInvoice = (inv) => persist({
+    ...data,
+    invoices: (data.invoices || []).filter((x) => (x.id || x.number) !== (inv.id || inv.number)),
+  });
+
+  // Reopen a filed invoice exactly as issued. The client may since have been
+  // renamed or removed, so fall back to the name stored on the invoice.
+  const openStoredInvoice = (inv) => setInvoiceView({
+    record: { id: inv.id, date: inv.issueDate, amount: inv.amount, currency: inv.currency },
+    client: data.clients.find((c) => c.id === inv.clientId)
+      || data.clients.find((c) => c.name === inv.clientName)
+      || { id: inv.clientId || "", name: inv.clientName || "Client" },
+    existing: inv,
+  });
 
   // Populate the edit-commission fields whenever a client is opened for editing.
   useEffect(() => {
@@ -579,9 +605,49 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   const agencyCutLabel = data.clients.length && agLabelsSet.length === 1 ? `${t.agencyShareLabel} · ${agLabelsSet[0]}` : t.agencyShareLabel;
   const chatterCutLabel = data.clients.length && chLabelsSet.length === 1 ? `${t.staffShareLabel} · ${chLabelsSet[0]}` : t.staffShareLabel;
 
+  // Declared above the stats below, which call them during render.
+  const clientNameFn = (id) => data.clients.find((c) => c.id === id)?.name || "Unknown";
+  const chatterNameFn = (id) => data.chatters.find((c) => c.id === id)?.name || "Unknown";
+  const chatterClientFn = (id) => data.chatters.find((c) => c.id === id)?.clientId;
+
+  // ── Day blocks ────────────────────────────────────────────────────────────
+  // A client's sales are grouped into one block per date so today's takings stay
+  // separate from earlier days and can be invoiced on their own. Ticking several
+  // blocks clubs them onto a single invoice instead.
+  const blockKey = (clientId, date) => clientId + "|" + date;
+  const hiddenBlocks = data.hiddenBlocks || [];
+  // What a client is billed for one sale: agency share plus staff share, the same
+  // amount the invoice has always charged.
+  const billable = (r) => money((r.agencyCut || 0) + (r.chatterCut || 0));
+  const invoicedRecIds = new Set((data.invoices || []).flatMap((i) => i.recordIds || []));
+
   const clientStats = data.clients.map((cl) => {
     const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && data.chatters.find((c) => c.id === r.chatterId)?.clientId === cl.id);
-    return { id: cl.id, name: cl.name, color: cl.color, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length };
+    const byDate = {};
+    recs.forEach((r) => { (byDate[r.date] = byDate[r.date] || []).push(r); });
+    const blocks = Object.entries(byDate)
+      .sort((a, b) => b[0].localeCompare(a[0])) // newest day first
+      .map(([date, rs]) => ({
+        key: blockKey(cl.id, date),
+        date,
+        records: rs,
+        total: sumMoney(rs, (r) => r.amount),
+        agency: sumMoney(rs, (r) => r.agencyCut),
+        chatterPay: sumMoney(rs, (r) => r.chatterCut),
+        due: sumMoney(rs, billable),
+        // Fully billed only when every sale in the day is on an invoice, so a
+        // partly-invoiced day can't be dismissed by mistake.
+        invoiced: rs.every((r) => invoicedRecIds.has(r.id)),
+        // Per-staff breakdown within this single day.
+        staff: Object.values(rs.reduce((m, r) => {
+          const s = (m[r.chatterId] = m[r.chatterId] || { id: r.chatterId, name: chatterNameFn(r.chatterId), total: 0, agency: 0, chatterPay: 0, count: 0 });
+          s.total = money(s.total + r.amount); s.agency = money(s.agency + (r.agencyCut || 0));
+          s.chatterPay = money(s.chatterPay + (r.chatterCut || 0)); s.count += 1;
+          return m;
+        }, {})).sort((a, b) => b.total - a.total),
+      }))
+      .filter((b) => !(b.invoiced && hiddenBlocks.includes(b.key)));
+    return { id: cl.id, name: cl.name, color: cl.color, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length, blocks };
   });
 
   // Primary-role members: earnings from records they logged.
@@ -626,9 +692,39 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     dashRecs.length > 0 && { icon: "file-text", label: "Avg " + t.revenue.one.toLowerCase(), value: fmtIn(inDisp(avgSale), dispCode) },
   ];
 
-  const clientNameFn = (id) => data.clients.find((c) => c.id === id)?.name || "Unknown";
-  const chatterNameFn = (id) => data.chatters.find((c) => c.id === id)?.name || "Unknown";
-  const chatterClientFn = (id) => data.chatters.find((c) => c.id === id)?.clientId;
+  // Blocks ticked for clubbing, and the invoice built from them. Selection is
+  // confined to one client, since an invoice bills one client.
+  const clubbedFor = (cl) => cl.blocks.filter((b) => clubbed.includes(b.key));
+  // Ticking a block in one client clears ticks in another: one invoice, one client.
+  const toggleClub = (cl, key) => setClubbed((s) => {
+    if (s.includes(key)) return s.filter((k) => k !== key);
+    const own = cl.blocks.map((b) => b.key);
+    return [...s.filter((k) => own.includes(k)), key];
+  });
+  const dayLabel = (d) => (d === today() ? "Today · " + shortDate(d) : shortDate(d));
+  const periodLabelFor = (blocks) => {
+    const ds = blocks.map((b) => b.date).sort();
+    return ds.length === 1 ? shortDate(ds[0]) : shortDate(ds[0]) + " – " + shortDate(ds[ds.length - 1]);
+  };
+
+  // Raise one invoice covering every block passed in (one block, or several clubbed).
+  const invoiceBlocks = (cl, blocks) => {
+    if (!blocks.length) return;
+    const client = data.clients.find((c) => c.id === cl.id) || cl;
+    const recs = blocks.flatMap((b) => b.records);
+    setInvoiceView({
+      record: { id: "blk-" + blocks[0].key, date: today(), amount: sumMoney(recs, (r) => r.amount), currency: clientCur(client) },
+      client,
+      customAmount: sumMoney(recs, billable),
+      recordIds: recs.map((r) => r.id),
+      periodLabel: periodLabelFor(blocks),
+    });
+    setClubbed((s) => s.filter((k) => !blocks.some((b) => b.key === k)));
+  };
+
+  // Dismiss an invoiced block from the dashboard. The sales stay in History.
+  const hideBlock = (b) => persist({ ...data, hiddenBlocks: [...hiddenBlocks, b.key] });
+
 
   const bulkTotal = fromCents(Object.entries(bulkAmounts).reduce((acc, [cid, vals]) => {
     const chatter = data.chatters.find((c) => c.id === cid);
@@ -1005,17 +1101,6 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontWeight: 700, fontSize: 16, color: "var(--accent)" }}>{fmtIn(cl.total, cl.currency)}</span>
-                          {cl.total > 0 && (
-                            <button onClick={() => setInvoiceView({
-                              record: { id: "agg-" + cl.id, amount: cl.total, date: dashFilterDate === "all" ? today() : dashFilterDate },
-                              client: cl,
-                              customAmount: cl.agency + cl.chatterPay
-                            })} style={{
-                              background: C.accentDim, border: "none", borderRadius: 6, color: C.accent,
-                              fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600,
-                              fontFamily: "'JetBrains Mono',monospace",
-                            }}><Icon name="file-text" size={12} style={{ marginRight: 5 }} />Invoice</button>
-                          )}
                           {clChatters.some((ch) => ch.chatterPay > 0) && (
                             <button onClick={() => setShareCard({
                               chatters: clChatters.filter((ch) => ch.chatterPay > 0).map((ch) => {
@@ -1034,35 +1119,103 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                           )}
                         </div>
                       </div>
-                      {clChatters.map((ch) => (
-                        <div key={ch.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0 7px 42px", fontSize: 13 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ color: "var(--ink)", fontWeight: 600 }}>{ch.name}</span>
-                            <span style={{ color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>({ch.count})</span>
+                      {(() => {
+                        const picked = clubbedFor(cl);
+                        return picked.length > 1 && (
+                          <div style={{
+                            display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10,
+                            margin: "4px 0 10px", padding: "9px 12px", borderRadius: 10,
+                            background: "rgba(var(--pop-rgb),0.09)", border: "1px solid var(--pop-border)",
+                          }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 700 }}>{picked.length} days clubbed</span>
+                            <span style={{ fontSize: 12.5, color: C.textDim, fontFamily: "'JetBrains Mono',monospace" }}>
+                              {fmtIn(sumMoney(picked, (b) => b.due), cl.currency)} to bill
+                            </span>
+                            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                              <button onClick={() => setClubbed([])} style={{
+                                background: "none", border: "1px solid " + C.cardBorder, borderRadius: 6,
+                                color: C.textDim, fontSize: 11, padding: "5px 10px", cursor: "pointer", fontWeight: 600,
+                              }}>Clear</button>
+                              <button onClick={() => invoiceBlocks(cl, picked)} style={{
+                                background: "var(--pop)", border: "none", borderRadius: 6, color: "var(--pop-fg, #111)",
+                                fontSize: 11, padding: "5px 12px", cursor: "pointer", fontWeight: 700,
+                                fontFamily: "'JetBrains Mono',monospace",
+                              }}><Icon name="file-text" size={12} style={{ marginRight: 5 }} />Invoice together</button>
+                            </div>
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{fmtIn(ch.total, ch.currency)}</span>
-                            <span style={{ color: C.textMuted }}>·</span>
-                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--text-dim)" }}>{fmtIn(ch.agency, ch.currency)}</span>
-                            <span style={{ color: C.textMuted }}>·</span>
-                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, fontWeight: 600, color: "var(--pop)" }}>{fmtIn(ch.chatterPay, ch.currency)}</span>
-                            {ch.chatterPay > 0 && (
-                              <button onClick={() => setShareCard({
-                                chatters: [{
-                                  name: ch.name,
-                                  chatterCut: ch.chatterPay,
-                                  chatterCutPercent: (() => { const sp = clientCommission(data.clients.find((cl) => cl.id === ch.clientId)).staff; return sp.model === "percent" ? sp.rate : undefined; })()
-                                }],
-                                clientNameStr: clientNameFn(ch.clientId), date: "All Time", currency: ch.currency,
-                              })} style={{
-                                background: C.accentDim, border: "none", borderRadius: 5, color: C.accent,
-                                fontSize: 10, padding: "2px 7px", cursor: "pointer", fontWeight: 600,
-                                fontFamily: "'JetBrains Mono',monospace", marginLeft: 4,
-                              }}>Share</button>
-                            )}
+                        );
+                      })()}
+
+                      {cl.blocks.map((b) => {
+                        const isClubbed = clubbed.includes(b.key);
+                        return (
+                          <div key={b.key} style={{
+                            marginTop: 8, padding: "10px 12px", borderRadius: 10,
+                            border: "1px solid " + (isClubbed ? "var(--pop-border)" : C.cardBorder),
+                            background: isClubbed ? "rgba(var(--pop-rgb),0.06)" : "rgba(var(--ink-rgb),0.02)",
+                          }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                              <BrutalCheck checked={isClubbed} onChange={() => toggleClub(cl, b.key)}
+                                ariaLabel={"Club " + dayLabel(b.date) + " with another day"} />
+                              <span style={{ fontWeight: 700, fontSize: 12.5, color: b.date === today() ? "var(--pop)" : "var(--ink)" }}>
+                                {dayLabel(b.date)}
+                              </span>
+                              <span style={{ color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
+                                ({b.records.length})
+                              </span>
+                              {b.invoiced && (
+                                <span style={{
+                                  fontSize: 9, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace",
+                                  border: "1px solid " + C.cardBorder, borderRadius: 4, padding: "1px 5px", letterSpacing: 0.5,
+                                }}>INVOICED</span>
+                              )}
+                              <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 14, color: "var(--accent)" }}>
+                                {fmtIn(b.total, cl.currency)}
+                              </span>
+                              <button onClick={() => invoiceBlocks(cl, [b])} title={"Invoice " + dayLabel(b.date) + " on its own"} style={{
+                                background: C.accentDim, border: "none", borderRadius: 6, color: C.accent,
+                                fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600,
+                                fontFamily: "'JetBrains Mono',monospace",
+                              }}><Icon name="file-text" size={12} style={{ marginRight: 5 }} />Invoice</button>
+                              {b.chatterPay > 0 && (
+                                <button onClick={() => setShareCard({
+                                  chatters: b.staff.filter((s) => s.chatterPay > 0).map((s) => ({
+                                    name: s.name, chatterCut: s.chatterPay,
+                                    chatterCutPercent: (() => { const sp = clientCommission(cl).staff; return sp.model === "percent" ? sp.rate : undefined; })(),
+                                  })),
+                                  clientNameStr: cl.name, date: shortDate(b.date), currency: cl.currency,
+                                })} style={{
+                                  background: C.accentDim, border: "none", borderRadius: 6, color: C.accent,
+                                  fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600,
+                                  fontFamily: "'JetBrains Mono',monospace",
+                                }}>Share</button>
+                              )}
+                              {b.invoiced && (
+                                <button onClick={() => hideBlock(b)} aria-label={"Dismiss " + dayLabel(b.date)}
+                                  title="Dismiss this block. The sales stay in History." style={{
+                                    background: "none", border: "none", color: "rgba(var(--ink-rgb),0.35)",
+                                    cursor: "pointer", padding: 3, borderRadius: 5, lineHeight: 0,
+                                  }}><Icon name="x" size={14} /></button>
+                              )}
+                            </div>
+                            {b.staff.map((s) => (
+                              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 0 30px", fontSize: 13 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ color: "var(--ink)", fontWeight: 600 }}>{s.name}</span>
+                                  <span style={{ color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>({s.count})</span>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{fmtIn(s.total, cl.currency)}</span>
+                                  <span style={{ color: C.textMuted }}>·</span>
+                                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--text-dim)" }}>{fmtIn(s.agency, cl.currency)}</span>
+                                  <span style={{ color: C.textMuted }}>·</span>
+                                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, fontWeight: 600, color: "var(--pop)" }}>{fmtIn(s.chatterPay, cl.currency)}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -1500,7 +1653,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         {tab === "Invoices" && (
           <div>
             <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 20 }}>Invoices</h2>
-            <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} />
+            <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} onOpen={openStoredInvoice} onDelete={deleteInvoice} />
           </div>
         )}
         </>)}

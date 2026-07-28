@@ -2,13 +2,26 @@
 
 export const STORAGE_KEY = "fanlink-tracker-v4";
 export const THEME_KEY = "agenvo-theme"; // "light" | "dark"; falls back to OS preference
-export const defaultState = { clients: [], chatters: [], records: [], brands: [], entries: [], invoices: [] };
+// hiddenBlocks: "clientId|YYYY-MM-DD" keys for invoiced day-blocks the user has
+// dismissed from the dashboard. The sales themselves stay in records.
+export const defaultState = { clients: [], chatters: [], records: [], brands: [], entries: [], invoices: [], hiddenBlocks: [] };
 
 export const genId = () =>
   (typeof crypto !== "undefined" && crypto.randomUUID)
     ? crypto.randomUUID()
     : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-export const today = () => new Date().toISOString().slice(0, 10);
+// Local calendar date, not UTC. toISOString() rolls back a day for anyone east
+// of UTC during their morning (in IST, midnight-05:30 reported yesterday), which
+// would put a fresh sale in yesterday's block instead of Today's.
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+export const today = () => ymd(new Date());
+
+// Shift a YYYY-MM-DD date by n days, staying on the local calendar.
+export const addDays = (dateStr, n) => {
+  const d = new Date((dateStr || today()) + "T00:00:00");
+  d.setDate(d.getDate() + (Number(n) || 0));
+  return ymd(d);
+};
 
 export const shortDate = (d) => {
   const dt = new Date(d + "T00:00:00");
@@ -31,17 +44,40 @@ const fiscalYear = (dateStr, startMonth = 1) => {
   return `${pad(start)}-${pad(start + 1)}`;
 };
 
-// Expand an invoice-number template using a record + invoice config.
-export const invoiceNumber = (record, inv) => {
-  if (record.invoiceNo) return record.invoiceNo;
-  const d = new Date((record.date || today()) + "T00:00:00");
-  const seq = (record.id || "").replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase() || "0001";
-  return (inv.numberFormat || "INV/{FY}/{SEQ}")
-    .replace(/\{FY\}/g, fiscalYear(record.date, inv.fiscalYearStartMonth || 1))
+// Expand an invoice-number template for a given issue date and sequence value.
+const expandInvoiceTemplate = (template, dateStr, inv, seq) => {
+  const d = new Date((dateStr || today()) + "T00:00:00");
+  return String(template == null ? "" : template)
+    .replace(/\{FY\}/g, fiscalYear(dateStr, inv.fiscalYearStartMonth || 1))
     .replace(/\{YYYY\}/g, String(d.getFullYear()))
     .replace(/\{YY\}/g, String(d.getFullYear() % 100).padStart(2, "0"))
     .replace(/\{MM\}/g, String(d.getMonth() + 1).padStart(2, "0"))
     .replace(/\{SEQ\}/g, seq);
+};
+
+// Allocate the next invoice number in the series that `dateStr` falls into.
+//
+// {SEQ} has to be a real running sequence for separate invoices to coexist.
+// Splitting the template around {SEQ} yields the series skeleton (for
+// "INV/{FY}/{SEQ}" that is the prefix "INV/26-27/" and an empty suffix); the
+// highest sequence already issued under that skeleton, plus one, is the next
+// number. A different fiscal year or month bucket forms its own series and
+// restarts at 0001. Callers must store the returned number on the invoice.
+export const nextInvoiceNumber = (invoices, inv, dateStr) => {
+  const list = Array.isArray(invoices) ? invoices : [];
+  const template = inv.numberFormat || "INV/{FY}/{SEQ}";
+  const parts = String(template).split("{SEQ}");
+  const pre = expandInvoiceTemplate(parts[0], dateStr, inv, "");
+  const post = expandInvoiceTemplate(parts.slice(1).join("{SEQ}"), dateStr, inv, "");
+  let max = 0;
+  list.forEach((x) => {
+    const n = String(x.number || "");
+    if (n.length <= pre.length + post.length) return;
+    if (!n.startsWith(pre) || !n.endsWith(post)) return;
+    const v = parseInt(n.slice(pre.length, n.length - post.length), 10);
+    if (!isNaN(v) && v > max) max = v;
+  });
+  return expandInvoiceTemplate(template, dateStr, inv, String(max + 1).padStart(4, "0"));
 };
 
 // "#5EEAD4" -> "94, 234, 212"  (for rgba(var(--accent-rgb), a) glows)
