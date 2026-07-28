@@ -3,7 +3,7 @@ import { computeShares, useConfig } from "./config.js";
 import { baseCode, fmtIn, money, sumMoney, toWords } from "./currency.js";
 import { C } from "./theme.js";
 import { Btn, Field, Icon, Modal, inpStyle } from "./ui.jsx";
-import { addDays, nextInvoiceNumber, printElement } from "./utils.js";
+import { invoiceNumber, printElement } from "./utils.js";
 
 /* ── Share Card ── */
 export function ShareCard({ chatters: list, clientNameStr, date, onClose, currency }) {
@@ -102,11 +102,8 @@ export function ShareCard({ chatters: list, clientNameStr, date, onClose, curren
   );
 }
 
-// Guard shell. Bails out — or prompts for the missing agency details — before the
-// document mounts, so InvoiceDoc's hooks below always run unconditionally.
-export function InvoiceView(props) {
-  const { record, client, onClose, onOpenSettings } = props;
-  const { business } = useConfig();
+export function InvoiceView({ record, client, onClose, customAmount, isPrinting, onDonePrinting, onOpenSettings, invoices = [], onUpsertInvoice }) {
+  const { business, locale, invoice } = useConfig();
   if (!record || !client) return null;
 
   // An invoice needs the agency's own details. If they're missing, prompt to fill them
@@ -132,61 +129,20 @@ export function InvoiceView(props) {
     );
   }
 
-  return <InvoiceDoc {...props} />;
-}
-
-// `lineItems` bills many sales on one document: [{ id, description, date, amount }].
-// Omit it and the invoice falls back to a single summary line (the legacy path).
-// `existing` reopens an already-issued invoice, preserving its number and totals.
-function InvoiceDoc({ record, client, onClose, customAmount, isPrinting, onDonePrinting, invoices = [], onUpsertInvoice, lineItems, recordIds, existing }) {
-  const { business, locale, invoice } = useConfig();
-
-  const issueDate = existing?.issueDate || record.date;
-  const invCur = existing?.currency || record.currency || baseCode();
-
-  // One line per sale when given, otherwise the single rolled-up line.
-  const items = (existing?.lineItems && existing.lineItems.length ? existing.lineItems : lineItems) || [{
-    id: "single",
-    description: `${invoice.lineItemLabel} - ${client.name}`,
-    date: record.date,
-    amount: money(customAmount ?? (() => { const s = computeShares(client, record.amount, record.hours || 0); return s.agencyShare + s.staffShare; })()),
-  }];
-
-  // The number is allocated once, when the document opens, and never recomputed —
-  // re-deriving it after each save would let it drift as data.invoices grows.
-  const [invNo] = useState(() => existing?.number || nextInvoiceNumber(invoices, invoice, issueDate));
-
-  const dateStr = new Date(issueDate + "T00:00:00").toLocaleDateString(locale.locale || "en-GB");
-  const dueISO = existing?.dueDate || addDays(issueDate, invoice.dueDays || 0);
-  const dueStr = new Date(dueISO + "T00:00:00").toLocaleDateString(locale.locale || "en-GB");
-  const invAmount = sumMoney(items, (it) => it.amount);
+  const invNo = invoiceNumber(record, invoice);
+  const dateStr = new Date(record.date + "T00:00:00").toLocaleDateString(locale.locale || "en-GB");
+  const due = new Date(record.date + "T00:00:00");
+  due.setDate(due.getDate() + (invoice.dueDays || 0));
+  const dueStr = due.toLocaleDateString(locale.locale || "en-GB");
+  const invAmount = money(customAmount ?? (() => { const s = computeShares(client, record.amount, record.hours || 0); return s.agencyShare + s.staffShare; })());
+  const invCur = (record.currency || baseCode());
   const taxRate = Number(locale.taxRate) || 0;
   const tax = money(invAmount * taxRate);
   const total = money(invAmount + tax);
 
-  const stored = invoices.find((i) => (existing && i.id === existing.id) || i.number === invNo);
-
-  // Every route out of this modal (PDF, email, status pill) files the invoice, so
-  // a generated document is never left untracked.
-  const save = (status) => onUpsertInvoice?.({
-    id: stored?.id || existing?.id,
-    number: invNo,
-    clientId: client.id,
-    clientName: client.name,
-    amount: total,
-    currency: invCur,
-    issueDate,
-    dueDate: dueISO,
-    status: status || stored?.status || "draft",
-    recordIds: recordIds || existing?.recordIds || [],
-    lineItems: items,
-  });
-
-  const savePrint = () => { save(); printElement("invoice-printable", "Invoice_" + invNo.replace(/\//g, "_")); };
-
   useEffect(() => {
     if (isPrinting) {
-      savePrint();
+      printElement("invoice-printable", "Invoice_" + invNo.replace(/\//g, "_"));
       onDonePrinting?.();
     }
   }, [isPrinting, invNo, onDonePrinting]);
@@ -208,7 +164,7 @@ function InvoiceDoc({ record, client, onClose, customAmount, isPrinting, onDoneP
     const url = `mailto:${encodeURIComponent(emailTo.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     if (typeof window !== "undefined") window.location.href = url;
     // Opening the draft marks the invoice Sent (you can change it back in the Invoices tab).
-    save("sent");
+    onUpsertInvoice?.({ number: invNo, clientName: client.name, amount: total, currency: invCur, issueDate: record.date, dueDate: due.toISOString().slice(0, 10), status: "sent" });
   };
 
   return (
@@ -253,20 +209,18 @@ function InvoiceDoc({ record, client, onClose, customAmount, isPrinting, onDoneP
         <div style={{ marginBottom: 30 }}>
           <div style={{ display: "flex", borderBottom: "1px solid #000", paddingBottom: 8, fontSize: 12, fontWeight: 700 }}>
             <div style={{ flex: 2 }}>Description</div>
-            <div style={{ flex: 1, textAlign: "right" }}>Date</div>
+            <div style={{ flex: 1, textAlign: "right" }}>Quantity</div>
+            <div style={{ flex: 1, textAlign: "right" }}>Unit Price</div>
             <div style={{ flex: 1, textAlign: "right" }}>Amount</div>
           </div>
-          {items.map((it, i) => (
-            <div key={it.id || i} style={{ display: "flex", padding: "12px 0", fontSize: 13, borderBottom: "1px solid #eee" }}>
-              <div style={{ flex: 2 }}>
-                <div style={{ fontWeight: 600 }}>{it.description}</div>
-              </div>
-              <div style={{ flex: 1, textAlign: "right", color: "#444" }}>
-                {it.date ? new Date(it.date + "T00:00:00").toLocaleDateString(locale.locale || "en-GB") : ""}
-              </div>
-              <div style={{ flex: 1, textAlign: "right" }}>{fmtIn(it.amount, invCur)}</div>
+          <div style={{ display: "flex", padding: "12px 0", fontSize: 13, borderBottom: "1px solid #eee" }}>
+            <div style={{ flex: 2 }}>
+              <div style={{ fontWeight: 600 }}>{invoice.lineItemLabel} - {client.name}</div>
             </div>
-          ))}
+            <div style={{ flex: 1, textAlign: "right" }}>1.00</div>
+            <div style={{ flex: 1, textAlign: "right" }}>{fmtIn(invAmount, invCur)}</div>
+            <div style={{ flex: 1, textAlign: "right" }}>{fmtIn(invAmount, invCur)}</div>
+          </div>
         </div>
 
         {/* Summary */}
@@ -313,8 +267,12 @@ function InvoiceDoc({ record, client, onClose, customAmount, isPrinting, onDoneP
       </div>
 
       {onUpsertInvoice && (() => {
+        const stored = invoices.find((i) => i.number === invNo);
         const cur = stored ? stored.status : null;
-        const setStatus = (status) => save(status);
+        const setStatus = (status) => onUpsertInvoice({
+          number: invNo, clientName: client.name, amount: total, currency: invCur,
+          issueDate: record.date, dueDate: due.toISOString().slice(0, 10), status,
+        });
         const opts = [{ k: "draft", l: "Draft", c: "#64748B" }, { k: "sent", l: "Sent", c: "#2563EB" }, { k: "paid", l: "Paid", c: "#16A34A" }];
         return (
           <div className="no-print" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
@@ -326,9 +284,7 @@ function InvoiceDoc({ record, client, onClose, customAmount, isPrinting, onDoneP
                 background: cur === o.k ? o.c : "transparent", color: cur === o.k ? "#fff" : C.textDim,
               }}>{o.l}</button>
             ))}
-            <span style={{ fontSize: 11.5, color: C.textMuted, marginLeft: "auto" }}>
-              {stored ? "Saved to Invoices" : "Saves to Invoices when you download or email it"}
-            </span>
+            {!cur && <span style={{ fontSize: 11.5, color: C.textMuted }}>Pick a status to start tracking this invoice</span>}
           </div>
         );
       })()}
@@ -352,7 +308,7 @@ function InvoiceDoc({ record, client, onClose, customAmount, isPrinting, onDoneP
           <div style={{ display: "flex", gap: 8 }}>
             <Btn variant="secondary" onClick={onClose} style={{ flex: 1 }}>Close</Btn>
             <Btn variant="secondary" onClick={() => setEmailOpen(true)} style={{ flex: 1 }}><Icon name="share" size={14} style={{ marginRight: 6 }} />Email</Btn>
-            <Btn onClick={savePrint} style={{ flex: 1 }}><Icon name="download" size={14} style={{ marginRight: 6 }} />PDF</Btn>
+            <Btn onClick={() => printElement("invoice-printable", "Invoice_" + invNo.replace(/\//g, "_"))} style={{ flex: 1 }}><Icon name="download" size={14} style={{ marginRight: 6 }} />PDF</Btn>
           </div>
         )}
       </div>

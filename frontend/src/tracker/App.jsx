@@ -14,9 +14,6 @@ import { C, DARK, THEME } from "./theme.js";
 import { Avatar, BrutalCheck, Btn, CLIENT_COLORS, EmptyState, Field, Icon, Modal, StatCard, ThemeToggle, clientColor, inpStyle } from "./ui.jsx";
 import { STORAGE_KEY, THEME_KEY, defaultState, genId, loadData, printElement, saveData, shortDate, today } from "./utils.js";
 
-// History table columns: select box, staff, client, date, amount, you, them, actions.
-const HISTORY_COLS = "34px 1fr 0.8fr 0.7fr 0.9fr 0.7fr 0.7fr 64px";
-
 function App() {
   const [data, setData] = useState(defaultState);
   const config = data.config || defaultConfig;
@@ -86,10 +83,6 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   const [filterClient, setFilterClient] = useState("all");
   const [filterChatter, setFilterChatter] = useState("all");
   const [filterMonth, setFilterMonth] = useState("all");
-  // Sales picked in History to bill together on one invoice.
-  const [selectedRecs, setSelectedRecs] = useState([]);
-  // Dashboard client cards that have been expanded to show their individual sales.
-  const [expandedClients, setExpandedClients] = useState({});
 
   // Smart Paste
   const [smartPasteOpen, setSmartPasteOpen] = useState(false);
@@ -192,38 +185,12 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     return () => window.removeEventListener("agenvo:remote", onRemote);
   }, []);
 
-  // Upsert a tracked invoice (shared by service + management invoice views).
-  // Matched on id, never on number: numbers used to collide, so number-keyed
-  // upserts silently overwrote earlier invoices. The number fallback only covers
-  // legacy rows saved before invoices carried an id.
+  // Upsert a tracked invoice by its number (shared by service + management invoice views).
   const upsertInvoice = (inv) => {
     const list = Array.isArray(data.invoices) ? data.invoices : [];
-    const idx = inv.id
-      ? list.findIndex((x) => x.id === inv.id)
-      : list.findIndex((x) => !x.id && x.number === inv.number);
-    const next = idx >= 0
-      ? list.map((x, i) => (i === idx ? { ...x, ...inv } : x))
-      : [...list, { createdAt: new Date().toISOString(), ...inv, id: inv.id || genId() }];
+    const idx = list.findIndex((x) => x.number === inv.number);
+    const next = idx >= 0 ? list.map((x, i) => (i === idx ? { ...x, ...inv } : x)) : [...list, { id: genId(), ...inv }];
     persist({ ...data, invoices: next });
-  };
-
-  const deleteInvoice = (inv) => {
-    const list = Array.isArray(data.invoices) ? data.invoices : [];
-    persist({ ...data, invoices: list.filter((x) => (x.id || x.number) !== (inv.id || inv.number)) });
-  };
-
-  // Reopen a filed invoice exactly as issued — same number, lines and totals.
-  // The client may since have been renamed or deleted, so fall back to the name
-  // stored on the invoice itself rather than failing to open.
-  const openStoredInvoice = (inv) => {
-    const client = data.clients.find((c) => c.id === inv.clientId)
-      || data.clients.find((c) => c.name === inv.clientName)
-      || { id: inv.clientId || "", name: inv.clientName || "Client" };
-    setInvoiceView({
-      record: { id: inv.id, date: inv.issueDate, amount: inv.amount, currency: inv.currency },
-      client,
-      existing: inv,
-    });
   };
 
   // Populate the edit-commission fields whenever a client is opened for editing.
@@ -459,31 +426,22 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
             }
             
             if (parsedVal !== null && !isNaN(parsedVal)) {
-              // Keep every detected number as its own sale. Summing them here used
-              // to collapse a staffer's whole paste into a single record.
-              if (!res[ch.id]) res[ch.id] = [];
-              res[ch.id].push(parsedVal);
+              if (!res[ch.id]) res[ch.id] = { sum: 0, count: 0 };
+              res[ch.id].sum += parsedVal;
+              res[ch.id].count += 1;
             }
           }
         }
       });
     });
     const items = Object.entries(res)
-      .map(([id, nums]) => ({ id, name: chatterNameFn(id), text: nums.join(", "), count: nums.length, included: true }))
-      .sort((a, b) => sumMoney(b.text ? parseAmountList(b.text) : [], (n) => n) - sumMoney(a.text ? parseAmountList(a.text) : [], (n) => n));
+      .map(([id, o]) => ({ id, name: chatterNameFn(id), amount: o.sum, count: o.count, included: true }))
+      .sort((a, b) => b.amount - a.amount);
     setReviewItems(items);
   };
 
-  // "100, 250.50 300" -> [100, 250.5, 300]. Each number becomes its own sale.
-  const parseAmountList = (s) => String(s ?? "")
-    .split(/[^0-9.]+/)
-    .map((x) => parseFloat(x))
-    .filter((n) => !isNaN(n) && n > 0);
-
-  const reviewItemTotal = (it) => sumMoney(parseAmountList(it.text), (n) => n);
-
   const setReviewAmount = (id, val) =>
-    setReviewItems((items) => items.map((it) => (it.id === id ? { ...it, text: val, count: parseAmountList(val).length } : it)));
+    setReviewItems((items) => items.map((it) => (it.id === id ? { ...it, amount: val } : it)));
   const toggleReviewItem = (id) =>
     setReviewItems((items) => items.map((it) => (it.id === id ? { ...it, included: !it.included } : it)));
 
@@ -491,12 +449,8 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     if (!reviewItems) return;
     const next = { ...bulkAmounts };
     reviewItems.forEach((it) => {
-      if (!it.included) return;
-      const nums = parseAmountList(it.text);
-      if (!nums.length) return;
-      // Append: whatever was already typed for this staffer is kept.
-      const kept = (next[it.id] || []).filter((v) => String(v).trim() !== "");
-      next[it.id] = [...kept, ...nums.map(String), ""];
+      const num = parseFloat(it.amount);
+      if (it.included && !isNaN(num) && num > 0) next[it.id] = [String(num), ""];
     });
     setBulkAmounts(next); setReviewItems(null); setPastedText(""); setSmartPasteOpen(false);
   };
@@ -625,12 +579,9 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   const agencyCutLabel = data.clients.length && agLabelsSet.length === 1 ? `${t.agencyShareLabel} · ${agLabelsSet[0]}` : t.agencyShareLabel;
   const chatterCutLabel = data.clients.length && chLabelsSet.length === 1 ? `${t.staffShareLabel} · ${chLabelsSet[0]}` : t.staffShareLabel;
 
-  // `records` is carried through so a card can list its individual sales. Without
-  // it the dashboard shows only per-client totals, which makes a newly added sale
-  // look like it merged into an existing one.
   const clientStats = data.clients.map((cl) => {
     const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && data.chatters.find((c) => c.id === r.chatterId)?.clientId === cl.id);
-    return { id: cl.id, name: cl.name, color: cl.color, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length, records: [...recs].sort((a, b) => b.date.localeCompare(a.date)) };
+    return { id: cl.id, name: cl.name, color: cl.color, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length };
   });
 
   // Primary-role members: earnings from records they logged.
@@ -723,44 +674,6 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
   }).sort((a, b) => b.date.localeCompare(a.date));
 
   const months = [...new Set(data.records.map((r) => new Date(r.date + "T00:00:00").toLocaleString("default", { month: "long", year: "numeric" })))];
-
-  // ── Billing a batch of sales on one invoice ───────────────────────────────
-  // What the client is billed for a single sale: the agency's share plus the
-  // staff share, matching what the single-sale invoice has always charged.
-  const billable = (r) => money((r.agencyCut || 0) + (r.chatterCut || 0));
-  // Which sales already appear on an invoice, so they aren't billed twice.
-  const invoicedRecIds = new Set((data.invoices || []).flatMap((i) => i.recordIds || []));
-
-  const toggleRecSelected = (id) =>
-    setSelectedRecs((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const clearSelection = () => setSelectedRecs([]);
-
-  const selectedRecords = filteredRecords.filter((r) => selectedRecs.includes(r.id));
-  const selectedClientIds = [...new Set(selectedRecords.map((r) => chatterClientFn(r.chatterId)))];
-  const selectionTotal = sumMoney(selectedRecords, billable);
-  // One invoice bills one client, so a mixed selection has to be narrowed first.
-  const selectionBlocked = selectedClientIds.length > 1;
-
-  // Build a single invoice covering every selected sale, one line per sale.
-  const invoiceSelection = () => {
-    if (!selectedRecords.length || selectionBlocked) return;
-    const client = data.clients.find((c) => c.id === selectedClientIds[0]);
-    if (!client) return;
-    const ordered = [...selectedRecords].sort((a, b) => a.date.localeCompare(b.date));
-    const lineItems = ordered.map((r) => ({
-      id: r.id,
-      description: `${config.invoice.lineItemLabel} · ${chatterNameFn(r.chatterId)}`,
-      date: r.date,
-      amount: billable(r),
-    }));
-    setInvoiceView({
-      record: { id: "sel-" + ordered[0].id, date: today(), amount: selectionTotal, currency: clientCur(client) },
-      client,
-      lineItems,
-      recordIds: ordered.map((r) => r.id),
-    });
-    clearSelection();
-  };
 
   // Loader: keep the splash up briefly so it reads as intentional, then fade out.
   const [bootDone, setBootDone] = useState(false);
@@ -1088,39 +1001,16 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                           <div>
                             <span style={{ fontWeight: 600, fontSize: 14 }}>{cl.name}</span>
                             <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: 8 }}>{cl.chatterCount} {(cl.chatterCount === 1 ? t.staff.one : t.staff.many).toLowerCase()}</span>
-                            {cl.records.length > 0 && (
-                              <button
-                                onClick={() => setExpandedClients((s) => ({ ...s, [cl.id]: !s[cl.id] }))}
-                                aria-expanded={!!expandedClients[cl.id]}
-                                title={expandedClients[cl.id] ? "Hide individual sales" : "Show each sale separately"}
-                                style={{
-                                  background: "none", border: "none", cursor: "pointer", padding: "0 0 0 8px",
-                                  color: "var(--text-dim)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace",
-                                }}
-                              >
-                                {cl.records.length} {cl.records.length === 1 ? "sale" : "sales"} {expandedClients[cl.id] ? "▲" : "▼"}
-                              </button>
-                            )}
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontWeight: 700, fontSize: 16, color: "var(--accent)" }}>{fmtIn(cl.total, cl.currency)}</span>
                           {cl.total > 0 && (
-                            <button onClick={() => {
-                              const ordered = [...cl.records].sort((a, b) => a.date.localeCompare(b.date));
-                              setInvoiceView({
-                                record: { id: "agg-" + cl.id, amount: cl.total, date: dashFilterDate === "all" ? today() : dashFilterDate, currency: cl.currency },
-                                client: data.clients.find((c) => c.id === cl.id) || cl,
-                                // Itemised, one line per sale, so the client sees what they are being billed for.
-                                lineItems: ordered.map((r) => ({
-                                  id: r.id,
-                                  description: `${config.invoice.lineItemLabel} · ${chatterNameFn(r.chatterId)}`,
-                                  date: r.date,
-                                  amount: billable(r),
-                                })),
-                                recordIds: ordered.map((r) => r.id),
-                              });
-                            }} style={{
+                            <button onClick={() => setInvoiceView({
+                              record: { id: "agg-" + cl.id, amount: cl.total, date: dashFilterDate === "all" ? today() : dashFilterDate },
+                              client: cl,
+                              customAmount: cl.agency + cl.chatterPay
+                            })} style={{
                               background: C.accentDim, border: "none", borderRadius: 6, color: C.accent,
                               fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600,
                               fontFamily: "'JetBrains Mono',monospace",
@@ -1173,34 +1063,6 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                           </div>
                         </div>
                       ))}
-                      {expandedClients[cl.id] && (
-                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid " + C.cardBorder }}>
-                          {cl.records.map((r) => (
-                            <div key={r.id} style={{
-                              display: "flex", justifyContent: "space-between", alignItems: "center",
-                              padding: "5px 0 5px 42px", fontSize: 12,
-                            }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                                <span style={{ color: C.textMuted, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{shortDate(r.date)}</span>
-                                <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{chatterNameFn(r.chatterId)}</span>
-                                {invoicedRecIds.has(r.id) && (
-                                  <span title="Already billed on an invoice" style={{
-                                    fontSize: 9, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace",
-                                    border: "1px solid " + C.cardBorder, borderRadius: 4, padding: "0 4px",
-                                  }}>INV</span>
-                                )}
-                              </div>
-                              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: "var(--ink)" }}>{fmtIn(r.amount, r.currency)}</span>
-                            </div>
-                          ))}
-                          <div style={{ paddingLeft: 42, marginTop: 6 }}>
-                            <button onClick={() => { setFilterClient(cl.id); setFilterChatter("all"); setFilterMonth("all"); setTab("History"); }} style={{
-                              background: "none", border: "none", padding: 0, cursor: "pointer",
-                              color: C.accent, fontSize: 11.5, fontWeight: 600,
-                            }}>Open in History to invoice these →</button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1575,33 +1437,6 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
               </Field>
             </div>
 
-            {selectedRecs.length > 0 && (
-              <div className="no-print" style={{
-                display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 18,
-                padding: "12px 18px", borderRadius: 14,
-                background: "rgba(var(--pop-rgb),0.08)", border: "1px solid var(--pop-border)",
-              }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>
-                  {selectedRecords.length} {selectedRecords.length === 1 ? "sale" : "sales"} selected
-                </span>
-                <span style={{ fontSize: 13, color: C.textDim, fontFamily: "'JetBrains Mono',monospace" }}>
-                  {fmt(selectionTotal)}
-                </span>
-                {selectionBlocked && (
-                  <span style={{ fontSize: 12, color: "#ef4444" }}>
-                    One invoice covers one {t.client.one.toLowerCase()} — narrow the {t.client.one.toLowerCase()} filter first.
-                  </span>
-                )}
-                <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                  <Btn variant="secondary" onClick={clearSelection} style={{ fontSize: 12, padding: "8px 14px" }}>Clear</Btn>
-                  <Btn onClick={invoiceSelection} disabled={selectionBlocked} style={{ fontSize: 12, padding: "8px 14px" }}>
-                    <Icon name="file-text" size={13} style={{ marginRight: 5 }} />
-                    Create invoice
-                  </Btn>
-                </div>
-              </div>
-            )}
-
             <div id="history-printable">
               {filteredRecords.length > 0 && (
                 <div className="mobile-grid" style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
@@ -1625,47 +1460,26 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
               ) : (
                 <div className="mobile-scroll-x" style={{ borderRadius: 14, overflow: "hidden", border: "1px solid " + C.cardBorder }}>
                   <div style={{
-                    display: "grid", gridTemplateColumns: HISTORY_COLS,
-                    minWidth: 640, padding: "10px 18px", background: "rgba(var(--accent-rgb),0.015)",
+                    display: "grid", gridTemplateColumns: "1fr 0.8fr 0.7fr 0.9fr 0.7fr 0.7fr 64px",
+                    minWidth: 600, padding: "10px 18px", background: "rgba(var(--accent-rgb),0.015)",
                     fontSize: 10, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace",
                     letterSpacing: 0.7, textTransform: "uppercase", gap: 6,
                   }}>
-                    <div className="no-print">
-                      <BrutalCheck
-                        checked={filteredRecords.length > 0 && filteredRecords.every((r) => selectedRecs.includes(r.id))}
-                        onChange={() => setSelectedRecs((s) =>
-                          filteredRecords.every((r) => s.includes(r.id)) ? [] : filteredRecords.map((r) => r.id))}
-                        ariaLabel="Select all listed sales"
-                      />
-                    </div>
                     <div>{t.staff.one}</div><div>{t.client.one}</div><div>Date</div><div>Amount</div><div>You</div><div>Them</div><div>Actions</div>
                   </div>
                   {filteredRecords.map((r) => (
                     <div key={r.id} className="recrow" style={{
-                      display: "grid", gridTemplateColumns: HISTORY_COLS,
-                      minWidth: 640, padding: "12px 18px", borderTop: "1px solid rgba(var(--accent-rgb),0.03)",
+                      display: "grid", gridTemplateColumns: "1fr 0.8fr 0.7fr 0.9fr 0.7fr 0.7fr 64px",
+                      minWidth: 600, padding: "12px 18px", borderTop: "1px solid rgba(var(--accent-rgb),0.03)",
                       fontSize: 13, alignItems: "center", gap: 6,
-                      background: selectedRecs.includes(r.id) ? "rgba(var(--pop-rgb),0.06)" : undefined,
                     }}>
-                      <div className="no-print">
-                        <BrutalCheck checked={selectedRecs.includes(r.id)} onChange={() => toggleRecSelected(r.id)}
-                          ariaLabel={"Select sale of " + fmtIn(r.amount, r.currency) + " on " + shortDate(r.date)} />
-                      </div>
-                      <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                        <span>{chatterNameFn(r.chatterId)}</span>
-                        {invoicedRecIds.has(r.id) && (
-                          <span title="Already billed on an invoice" style={{
-                            fontSize: 9, color: C.textMuted, fontFamily: "'JetBrains Mono',monospace",
-                            border: "1px solid " + C.cardBorder, borderRadius: 4, padding: "0 4px",
-                          }}>INV</span>
-                        )}
-                      </div>
+                      <div style={{ fontWeight: 600 }}>{chatterNameFn(r.chatterId)}</div>
                       <div style={{ color: C.textDim, fontSize: 12 }}>{clientNameFn(chatterClientFn(r.chatterId))}</div>
                       <div style={{ color: C.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{shortDate(r.date)}</div>
                       <div style={{ fontWeight: 700, color: C.accent }}>{fmtIn(r.amount, r.currency)}</div>
                       <div style={{ color: C.accent2, fontSize: 12 }}>{fmtIn(r.agencyCut, r.currency)}</div>
                       <div style={{ color: C.earn, fontSize: 12 }}>{fmtIn(r.chatterCut, r.currency)}</div>
-                      <div className="no-print" style={{ display: "flex", gap: 2, gridColumn: "8", justifyContent: "flex-end" }}>
+                      <div className="no-print" style={{ display: "flex", gap: 2, gridColumn: "7", justifyContent: "flex-end" }}>
                         <button onClick={() => setEditRecord(r)} aria-label="Edit sale" title="Edit" style={{
                           background: "none", border: "none", color: "rgba(var(--ink-rgb),0.35)",
                           cursor: "pointer", fontSize: 13, padding: 3, borderRadius: 5,
@@ -1686,7 +1500,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
         {tab === "Invoices" && (
           <div>
             <h2 style={{ fontSize: 21, fontWeight: 700, marginBottom: 20 }}>Invoices</h2>
-            <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} onOpen={openStoredInvoice} onDelete={deleteInvoice} />
+            <InvoicesPanel invoices={data.invoices || []} onUpsert={upsertInvoice} />
           </div>
         )}
         </>)}
@@ -1906,7 +1720,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <span style={{ fontSize: 11, color: C.textDim, fontFamily: "'JetBrains Mono',monospace" }}>REVIEW DETECTED SALES</span>
-              <span style={{ fontSize: 11, color: C.textMuted }}>One number per sale, comma separated</span>
+              <span style={{ fontSize: 11, color: C.textMuted }}>Edit or uncheck before applying</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {reviewItems.map((it) => (
@@ -1914,19 +1728,18 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                   <BrutalCheck checked={it.included} onChange={() => toggleReviewItem(it.id)} ariaLabel={"Include " + it.name} />
                   <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{it.name}</span>
                   {it.count > 1 && (
-                    <span title={it.count + " separate sales will be recorded for " + it.name}
+                    <span title={it.count + " numbers were added together — check this is right"}
                       style={{ fontSize: 10, color: C.earn, fontFamily: "'JetBrains Mono',monospace", border: "1px solid rgba(251,191,36,0.3)", borderRadius: 5, padding: "1px 5px" }}>
-                      {it.count} sales
+                      {it.count} summed
                     </span>
                   )}
                   <div style={{ position: "relative" }}>
                     <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: C.textMuted, fontSize: 12 }}>{config.locale.currencySymbol}</span>
-                    <input type="text" inputMode="decimal" value={it.text}
-                      onChange={(e) => setReviewAmount(it.id, e.target.value)}
+                    <input type="number" step="0.01" min="0" value={it.amount}
+                      onChange={(e) => setReviewAmount(it.id, numClean(e.target.value))}
                       disabled={!it.included}
-                      aria-label={it.name + " detected amounts, comma separated"}
-                      title="One number per sale, separated by commas"
-                      style={{ width: 150, padding: "6px 8px 6px 18px", background: "rgba(var(--ink-rgb),0.04)",
+                      aria-label={it.name + " detected amount"}
+                      style={{ width: 110, padding: "6px 8px 6px 18px", background: "rgba(var(--ink-rgb),0.04)",
                         border: "1px solid rgba(var(--ink-rgb),0.08)", borderRadius: 7, color: C.accent, fontSize: 13,
                         fontFamily: "'JetBrains Mono',monospace", outline: "none", textAlign: "right" }} />
                   </div>
@@ -1934,11 +1747,9 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
               ))}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(var(--ink-rgb),0.06)" }}>
-              <span style={{ fontSize: 12, color: C.textDim }}>
-                {reviewItems.reduce((n, it) => n + (it.included ? it.count : 0), 0)} sales to add
-              </span>
+              <span style={{ fontSize: 12, color: C.textDim }}>Total to add</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontFamily: "'JetBrains Mono',monospace" }}>
-                {fmt(sumMoney(reviewItems.filter((it) => it.included), reviewItemTotal))}
+                {fmt(reviewItems.reduce((s, it) => s + (it.included ? (parseFloat(it.amount) || 0) : 0), 0))}
               </span>
             </div>
           </div>
@@ -1955,7 +1766,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
           {!reviewItems ? (
             <Btn onClick={parseSales} disabled={!pastedText.trim() || !salesClientId}>Scan text</Btn>
           ) : (
-            <Btn onClick={applyParsed} disabled={!reviewItems.some((it) => it.included && it.count > 0)}>Apply to inputs</Btn>
+            <Btn onClick={applyParsed} disabled={!reviewItems.some((it) => it.included && parseFloat(it.amount) > 0)}>Apply to inputs</Btn>
           )}
         </div>
       </Modal>
