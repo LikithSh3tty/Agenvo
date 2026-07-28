@@ -1165,8 +1165,22 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                             background: isClubbed ? "rgba(var(--pop-rgb),0.06)" : "rgba(var(--ink-rgb),0.02)",
                           }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                              <BrutalCheck checked={isClubbed} onChange={() => toggleClub(cl, b.key)}
-                                ariaLabel={"Club " + dayLabel(b.date) + " with another day"} />
+                              {/* Self-contained: the box and its tick are inline styles plus a
+                                  real SVG, so nothing here depends on the global stylesheet. */}
+                              <button type="button" role="checkbox" aria-checked={isClubbed}
+                                onClick={() => toggleClub(cl, b.key)}
+                                aria-label={"Club " + dayLabel(b.date) + " with another day"}
+                                title="Tick to bill this day together with another day"
+                                style={{
+                                  width: 22, height: 22, flex: "none", padding: 0, borderRadius: 6,
+                                  display: "grid", placeItems: "center", cursor: "pointer",
+                                  border: "2px solid " + (isClubbed ? "var(--pop)" : "rgba(var(--ink-rgb),0.5)"),
+                                  background: isClubbed ? "var(--pop)" : "transparent",
+                                  color: isClubbed ? "var(--pop-fg)" : "transparent",
+                                  transition: "background .15s ease, border-color .15s ease",
+                                }}>
+                                {isClubbed && <Icon name="check" size={14} stroke={3.2} />}
+                              </button>
                               <span style={{ fontWeight: 700, fontSize: 12.5, color: b.date === today() ? "var(--pop)" : "var(--ink)" }}>
                                 {dayLabel(b.date)}
                               </span>
