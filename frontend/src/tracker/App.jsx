@@ -80,6 +80,8 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
 
   // Day blocks ticked to be clubbed onto one invoice ("clientId|YYYY-MM-DD" keys).
   const [clubbed, setClubbed] = useState([]);
+  // Block awaiting confirmation before being dismissed from the dashboard.
+  const [hideConfirm, setHideConfirm] = useState(null);
 
   // Filters
   const [dashFilterDate, setDashFilterDate] = useState("all");
@@ -625,7 +627,7 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     const recs = data.records.filter((r) => (dashFilterDate === "all" || r.date === dashFilterDate) && data.chatters.find((c) => c.id === r.chatterId)?.clientId === cl.id);
     const byDate = {};
     recs.forEach((r) => { (byDate[r.date] = byDate[r.date] || []).push(r); });
-    const blocks = Object.entries(byDate)
+    const allBlocks = Object.entries(byDate)
       .sort((a, b) => b[0].localeCompare(a[0])) // newest day first
       .map(([date, rs]) => ({
         key: blockKey(cl.id, date),
@@ -645,9 +647,9 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
           s.chatterPay = money(s.chatterPay + (r.chatterCut || 0)); s.count += 1;
           return m;
         }, {})).sort((a, b) => b.total - a.total),
-      }))
-      .filter((b) => !(b.invoiced && hiddenBlocks.includes(b.key)));
-    return { id: cl.id, name: cl.name, color: cl.color, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length, blocks };
+      }));
+    const blocks = allBlocks.filter((b) => !hiddenBlocks.includes(b.key));
+    return { id: cl.id, name: cl.name, color: cl.color, currency: clientCur(cl), agencyCut: cl.agencyCut, chatterCut: cl.chatterCut, total: sumMoney(recs, (r) => r.amount), agency: sumMoney(recs, (r) => r.agencyCut), chatterPay: sumMoney(recs, (r) => r.chatterCut), chatterCount: data.chatters.filter((c) => c.clientId === cl.id).length, blocks, hiddenCount: allBlocks.length - blocks.length };
   });
 
   // Primary-role members: earnings from records they logged.
@@ -707,23 +709,39 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
     return ds.length === 1 ? shortDate(ds[0]) : shortDate(ds[0]) + " – " + shortDate(ds[ds.length - 1]);
   };
 
+  // The invoice already covering exactly this set of sales, if one exists.
+  const invoiceCovering = (ids) => (data.invoices || []).find((i) => {
+    const ri = i.recordIds || [];
+    return ri.length === ids.length && ids.every((x) => ri.includes(x));
+  });
+
   // Raise one invoice covering every block passed in (one block, or several clubbed).
+  // Re-invoicing the same sales reopens the invoice already issued for them rather
+  // than minting a second one, so changing Sent to Paid edits a single row.
   const invoiceBlocks = (cl, blocks) => {
     if (!blocks.length) return;
     const client = data.clients.find((c) => c.id === cl.id) || cl;
     const recs = blocks.flatMap((b) => b.records);
+    const ids = recs.map((r) => r.id);
+    setClubbed((s) => s.filter((k) => !blocks.some((b) => b.key === k)));
+    const already = invoiceCovering(ids);
+    if (already) { openStoredInvoice(already); return; }
     setInvoiceView({
       record: { id: "blk-" + blocks[0].key, date: today(), amount: sumMoney(recs, (r) => r.amount), currency: clientCur(client) },
       client,
       customAmount: sumMoney(recs, billable),
-      recordIds: recs.map((r) => r.id),
+      recordIds: ids,
       periodLabel: periodLabelFor(blocks),
     });
-    setClubbed((s) => s.filter((k) => !blocks.some((b) => b.key === k)));
   };
 
-  // Dismiss an invoiced block from the dashboard. The sales stay in History.
-  const hideBlock = (b) => persist({ ...data, hiddenBlocks: [...hiddenBlocks, b.key] });
+  // Dismiss a block from the dashboard. The sales stay in records and History.
+  // Dismissing a day that has not been fully invoiced asks first, so unbilled
+  // sales can't be tidied away by accident.
+  const hideBlock = (b) => { setHideConfirm(null); persist({ ...data, hiddenBlocks: [...hiddenBlocks, b.key] }); };
+  const requestHideBlock = (b) => (b.invoiced ? hideBlock(b) : setHideConfirm(b));
+  // Removal only hides, so it has to be undoable — otherwise a day is gone for good.
+  const restoreBlocks = (cl) => persist({ ...data, hiddenBlocks: hiddenBlocks.filter((k) => !k.startsWith(cl.id + "|")) });
 
 
   const bulkTotal = fromCents(Object.entries(bulkAmounts).reduce((acc, [cid, vals]) => {
@@ -1123,10 +1141,20 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                           )}
                         </div>
                       </div>
-                      {cl.blocks.length > 1 && clubbedFor(cl).length < 2 && (
-                        <div style={{ fontSize: 11.5, color: C.textMuted, margin: "2px 0 2px 2px" }}>
-                          Tick two or more days to bill them on one invoice.
-                        </div>
+                      {((cl.blocks.length > 1 && clubbedFor(cl).length < 2) || cl.hiddenCount > 0) && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "2px 0 2px 2px" }}>
+                        {cl.blocks.length > 1 && clubbedFor(cl).length < 2 && (
+                          <span style={{ fontSize: 11.5, color: C.textMuted }}>
+                            Tick two or more days to bill them on one invoice.
+                          </span>
+                        )}
+                        {cl.hiddenCount > 0 && (
+                          <button onClick={() => restoreBlocks(cl)} style={{
+                            background: "none", border: "none", padding: 0, cursor: "pointer",
+                            color: C.accent, fontSize: 11.5, fontWeight: 600, marginLeft: "auto",
+                          }}>{cl.hiddenCount} removed · Restore</button>
+                        )}
+                      </div>
                       )}
 
                       {(() => {
@@ -1214,13 +1242,13 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
                                   fontFamily: "'JetBrains Mono',monospace",
                                 }}>Share</button>
                               )}
-                              {b.invoiced && (
-                                <button onClick={() => hideBlock(b)} aria-label={"Dismiss " + dayLabel(b.date)}
-                                  title="Dismiss this block. The sales stay in History." style={{
-                                    background: "none", border: "none", color: "rgba(var(--ink-rgb),0.35)",
-                                    cursor: "pointer", padding: 3, borderRadius: 5, lineHeight: 0,
-                                  }}><Icon name="x" size={14} /></button>
-                              )}
+                              <button type="button" onClick={() => requestHideBlock(b)}
+                                aria-label={"Remove " + dayLabel(b.date) + " block"}
+                                title="Remove this block from the dashboard. The sales stay in History." style={{
+                                  background: "rgba(239,68,68,0.12)", border: "none", borderRadius: 6,
+                                  color: "#ef4444", cursor: "pointer", padding: "4px 8px",
+                                  display: "grid", placeItems: "center", lineHeight: 0,
+                                }}><Icon name="x" size={13} stroke={2.4} /></button>
                             </div>
                             {b.staff.map((s) => (
                               <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 0 30px", fontSize: 13 }}>
@@ -1777,6 +1805,27 @@ const [editAgencyPart, setEditAgencyPart] = useState({ model: "percent", rate: A
             })()}
           </div>
         )}
+      </Modal>
+
+      <Modal open={!!hideConfirm} onClose={() => setHideConfirm(null)} title="Remove this block?">
+        <p style={{ color: C.textDim, fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
+          {hideConfirm && (
+            <span>
+              <strong style={{ color: "var(--ink)" }}>{dayLabel(hideConfirm.date)}</strong> has not been fully invoiced yet.
+              Removing it only clears the block from the dashboard, and its {hideConfirm.records.length}{" "}
+              {hideConfirm.records.length === 1 ? "sale stays" : "sales stay"} in History and in your totals.
+            </span>
+          )}
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Btn variant="secondary" onClick={() => setHideConfirm(null)}>Cancel</Btn>
+          <button onClick={() => hideBlock(hideConfirm)} style={{
+            padding: "11px 22px", background: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8,
+            color: "#ef4444", fontSize: 14, fontWeight: 600, cursor: "pointer",
+            fontFamily: "'Space Grotesk',sans-serif",
+          }}>Remove block</button>
+        </div>
       </Modal>
 
       <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title={"Remove " + (deleteConfirm ? (deleteConfirm.type === "client" ? "Client" : "Chatter") : "")}>
