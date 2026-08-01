@@ -98,7 +98,16 @@ export default function ChatWidget({ data, config }) {
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Local calendar date, not toISOString() - that shifts to UTC and can report
+  // the wrong day for users east or west of it.
+  const localToday = () => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
   const snapshot = () => ({
+    today: localToday(),
     clients: data.clients || [],
     chatters: data.chatters || [],
     records: data.records || [],

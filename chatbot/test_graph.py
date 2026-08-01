@@ -72,3 +72,24 @@ def test_sanitize_handles_none_inputs():
     from graph import _sanitize
     msg, clean, snap = _sanitize(None, None, None)
     assert msg == "" and clean == [] and snap == {}
+
+
+def test_today_uses_client_date():
+    from graph import today_of
+    assert today_of({"today": "2026-07-31"}) == "2026-07-31"
+
+
+def test_today_falls_back_when_missing_or_bogus():
+    from datetime import datetime, timezone
+    from graph import today_of
+    server_today = datetime.now(timezone.utc).date().isoformat()
+    for snap in ({}, None, {"today": "31/07/2026"}, {"today": 20260731}, {"today": "2026-13-45"}):
+        assert today_of(snap) == server_today
+
+
+def test_facts_always_carry_today():
+    from graph import compute_facts, today_of
+    snapshot = {"today": "2026-07-31", "records": [], "clients": [], "chatters": []}
+    facts = {"today": today_of(snapshot), **compute_facts("best_day", snapshot)}
+    assert facts["today"] == "2026-07-31"
+    assert "top_days_ranked" in facts

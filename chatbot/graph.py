@@ -6,6 +6,8 @@ the FACTS block, which is what makes analytics answers hallucination-free.
 """
 import json
 import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, TypedDict
 
@@ -34,7 +36,8 @@ reply with ONLY a JSON object, no other text:
     "top_clients"      - best/top clients, client rankings, second top client
     "top_team_members" - best/top team members or chatters, rankings
     "best_day"         - best day, biggest day, day with most sales
-    "by_date"          - anything about a SPECIFIC day or date they name
+    "by_date"          - anything about a SPECIFIC day - a date they name OR a
+                         relative day like today, yesterday, this week
                          (revenue, agency cut/fee, team pay, or sales on that day)
     "list_clients"     - list/show/name all their clients
     "list_team_members" - list/show/name all their team members or chatters
@@ -85,6 +88,11 @@ using ONLY the numbers in the FACTS block below. Rules:
 - For a question about a specific date: match it to the date in a daily
   breakdown (dates are ISO like 2026-07-07). If that date isn't there, it just
   means nothing was logged that day - say so plainly; don't call it missing data.
+- FACTS always contains "today" (the user's current date). Resolve relative
+  dates - today, yesterday, this week, this month - against it yourself, and
+  never say you don't know what today's date is. Just answer: if they ask
+  whether today is their best day, compare "today" to the dates in FACTS and
+  say yes or no.
 
 """ + TONE + """
 
@@ -184,6 +192,22 @@ def router_node(state: ChatState) -> ChatState:
     return {**state, **parse_route(_text(reply))}
 
 
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def today_of(snapshot):
+    """The user's local date, sent by the browser in the snapshot. Falls back to
+    the server's UTC date, which is close enough when the client didn't send one."""
+    sent = (snapshot or {}).get("today")
+    if isinstance(sent, str) and ISO_DATE.match(sent):
+        try:
+            datetime.strptime(sent, "%Y-%m-%d")
+            return sent
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc).date().isoformat()
+
+
 def compute_facts(metric, snapshot):
     if metric == "top_clients":
         return {"top_clients_ranked": analytics.top_clients(snapshot, 5)}
@@ -201,7 +225,8 @@ def compute_facts(metric, snapshot):
 
 
 def analytics_node(state: ChatState) -> ChatState:
-    facts = compute_facts(state.get("metric"), state.get("snapshot") or {})
+    snapshot = state.get("snapshot") or {}
+    facts = {"today": today_of(snapshot), **compute_facts(state.get("metric"), snapshot)}
     system = ANALYTICS_SYSTEM.format(facts=json.dumps(facts, indent=2))
     reply = _llm(ANSWER_MODEL).invoke(
         _messages(system, state.get("history"), state["message"])
